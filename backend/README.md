@@ -1,0 +1,46 @@
+# Backend
+
+FastAPI + numpy. Ranks Earth 20 × 20 km terrain patches by similarity to a lunar south-pole region.
+
+## Run
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+backend/.venv/bin/uvicorn app:app --app-dir backend --reload --port 8000
+```
+
+Then open the frontend (`python3 -m http.server 5173 --directory frontend`). It calls `http://localhost:8000/match`.
+API docs: http://localhost:8000/docs. Tests: `backend/.venv/bin/python -I backend/test_app.py`.
+
+## Data files — drop real data here
+
+Put these two files in `backend/data/`. Until both exist, the server uses `backend/data/sample/` (made-up numbers) and every response says `"sample": true`.
+
+### `earth_patches.csv` (from the Earth Engine export)
+One row per 20 × 20 km patch, DEM resampled to ~100 m/pixel.
+
+| column | meaning |
+|---|---|
+| `lat`, `lon` | patch center, degrees |
+| `meanSlope` | mean slope, degrees |
+| `p90Slope` | 90th-percentile slope, degrees |
+| `roughness` | std dev of elevation, m |
+| `relief` | max − min elevation, m |
+| `bareFrac` | fraction of patch that is WorldCover class 60 (0–1). Optional if you already filtered. Patches < 0.70 are dropped. |
+| `snowFrac` | fraction that is WorldCover class 70 snow/ice (0–1). Optional. ≥ 0.10 is dropped unless the user ticks "Include snow / ice". |
+| `name`, `country` | optional labels; blank → frontend shows coordinates |
+
+### `moon_regions.json` (from the LOLA DEM)
+Same 4 descriptors, same window size and pixel size, keyed by the region ids in `frontend/regions.js`:
+
+```json
+{ "haworth": { "meanSlope": 11.3, "p90Slope": 22.4, "roughness": 217, "relief": 1445 }, ... }
+```
+
+## Scoring
+1. Keep bare-ground patches (and no snow unless asked).
+2. For each feature, distance = |Earth − Moon| / (std of that feature across kept Earth patches).
+3. Per-feature score = 100 × (1 − distance / 2), clipped to 0–100 (2 std apart = 0).
+4. Match % = rank-weighted average over the picked constraints (1st of n gets n, 2nd n−1, …).
+5. Top N, skipping any patch within 100 km of one already picked, so results aren't 5 tiles of the same range.

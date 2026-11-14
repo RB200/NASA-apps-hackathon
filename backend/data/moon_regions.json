@@ -1,0 +1,56 @@
+{
+  "cabeus-b-peak": {
+    "meanSlope": 18.69,
+    "p90Slope": 25.53,
+    "roughness": 999.0,
+    "relief": 4516.5  
+  },
+  "haworth": {
+    "meanSlope": 9.51,
+    "p90Slope": 17.22,
+    "roughness": 476.32,
+    "relief": 2770.5
+  },
+  "malapert-massif": {
+    "meanSlope": 16.99,
+    "p90Slope": 25.76,
+    "roughness": 976.61,
+    "relief": 3997.5
+  },
+  "mons-mouton-plateau": {
+    "meanSlope": 8.41,
+    "p90Slope": 17.22,
+    "roughness": 357.05,
+    "relief": 2259.0
+  },
+  "mons-mouton": {
+    "meanSlope": 12.39,
+    "p90Slope": 21.54,
+    "roughness": 759.52,
+    "relief": 4146.5
+  },
+  "nobile-rim-1": {
+    "meanSlope": 16.46,
+    "p90Slope": 26.1,
+    "roughness": 1314.22,
+    "relief": 5792.0
+  },
+  "nobile-rim-2": {
+    "meanSlope": 12.41,
+    "p90Slope": 22.33,
+    "roughness": 642.64,
+    "relief": 3152.5
+  },
+  "de-gerlache-rim-2": {
+    "meanSlope": 12.09,
+    "p90Slope": 19.43,
+    "roughness": 893.32,
+    "relief": 3619.5
+  },
+  "slater-plain": {
+    "meanSlope": 8.72,
+    "p90Slope": 15.94,
+    "roughness": 326.42,
+    "relief": 1732.5
+  }
+}

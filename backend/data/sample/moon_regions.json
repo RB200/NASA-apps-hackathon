@@ -1,0 +1,12 @@
+{
+  "_note": "PLACEHOLDER values. Replace with descriptors computed from the LOLA ~100 m south polar DEM.",
+  "cabeus-b-peak":       { "meanSlope": 13.0, "p90Slope": 27.0, "roughness": 260, "relief": 1700 },
+  "haworth":             { "meanSlope": 11.3, "p90Slope": 22.4, "roughness": 217, "relief": 1445 },
+  "malapert-massif":     { "meanSlope": 15.0, "p90Slope": 30.0, "roughness": 320, "relief": 2200 },
+  "mons-mouton-plateau": { "meanSlope": 5.5,  "p90Slope": 12.0, "roughness": 75,  "relief": 600 },
+  "mons-mouton":         { "meanSlope": 4.5,  "p90Slope": 10.0, "roughness": 60,  "relief": 400 },
+  "nobile-rim-1":        { "meanSlope": 9.0,  "p90Slope": 19.0, "roughness": 150, "relief": 950 },
+  "nobile-rim-2":        { "meanSlope": 10.0, "p90Slope": 21.0, "roughness": 180, "relief": 1100 },
+  "de-gerlache-rim-2":   { "meanSlope": 8.0,  "p90Slope": 18.0, "roughness": 140, "relief": 850 },
+  "slater-plain":        { "meanSlope": 6.0,  "p90Slope": 14.0, "roughness": 95,  "relief": 650 }
+}
