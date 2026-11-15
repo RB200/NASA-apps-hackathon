@@ -13,3 +13,12 @@ From the repository root, serve the project locally and open the viewer at `http
 ```bash
 python3 -B -m http.server 5175
 ```
+
+## Earth analog mode
+
+The same rover can drive the best Earth analog of each Artemis III region (from the main app's terrain matching). In the viewer, pick a region under **Artemis region**, press **Earth analog**, then **Drive on Earth**. While driving, press **T** (or **Switch to Moon / Switch to Earth**) to swap the ground under the rover, keeping its position and heading; **Esc** exits.
+
+- Open straight into Earth mode: `terrain.html?region=slater-plain&world=earth`
+- Earth tiles: `frontend/assets/earth/` (512 × 512 at 30 m = 15.36 km, int16 metres, NASA SRTMGL1 v003), built by `data_prep/prepare_earth_tiles.py` from SRTMGL1 tiles in `../data_prep/cache/srtmgl1/`.
+- Code: `frontend/earth.js` + `frontend/earth.css`. Hooks in `terrain.js` (per-tile pixel size/height scale, Earth colours, no lunar craterlets, Moon⇄Earth toggle, lunar telemetry hidden on Earth) and `rover.js` (`setGravity`; suspension scales with gravity, unchanged on the Moon).
+- Only de Gerlache Rim 2 has its own Moon tile so far; other regions switch to the polar crater view and the HUD says so.

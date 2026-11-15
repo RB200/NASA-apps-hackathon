@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-const gravity = 1.62;
+let gravity = 1.62; // Moon by default; Earth mode (earth.js) switches it to 9.81
+export function setGravity(value) { gravity = value; }
 const step = 1 / 120;
 const wheelRadius = 0.383;
 const axleHeight = -0.617;
@@ -161,7 +162,9 @@ export class RoverDynamics {
       for (const [x, z] of contacts) {
         const ground = this.terrain(p.x + c*x - s*z, p.z + s*x + c*z).y;
         const rest = ground + 1 + Math.sin(this.pitch)*z - Math.sin(this.roll)*x;
-        lift += clamp((rest - p.y + 0.16) * 10 - this.vy * 3, 0, 8) / contacts.length;
+        // Suspension was tuned for lunar weight; scale it with gravity (k = 1 on the Moon).
+        const k = gravity / 1.62;
+        lift += clamp(((rest - p.y + 0.16) * 10 - this.vy * 3) * k, 0, 8 * k) / contacts.length;
         slopeFront += ground * (z - 0.469) / (4 * 1.701 ** 2);
         slopeSide += ground * x / (6 * 1.701 ** 2);
       }
