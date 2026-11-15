@@ -1,0 +1,110 @@
+{
+  "body": "moon",
+  "source": "NASA LRO LOLA LDEM_80S_20M",
+  "width": 1024,
+  "height": 1024,
+  "stridePixels": 1,
+  "pixelSizeM": 20.0,
+  "heightScaleM": 0.5,
+  "sites": {
+    "cabeus-b-peak": {
+      "id": "cabeus-b-peak",
+      "name": "Peak near Cabeus B",
+      "latitude": -83.6,
+      "longitude": -68.6,
+      "file": "cabeus-b-peak-20m-i16.bin",
+      "firstRow": 18231,
+      "firstColumn": 5643,
+      "centerLatitude": -83.6,
+      "centerLongitude": -68.6
+    },
+    "haworth": {
+      "id": "haworth",
+      "name": "Haworth",
+      "latitude": -86.8,
+      "longitude": -22.6,
+      "file": "haworth-20m-i16.bin",
+      "firstRow": 19167,
+      "firstColumn": 12822,
+      "centerLatitude": -86.8,
+      "centerLongitude": -22.6
+    },
+    "malapert-massif": {
+      "id": "malapert-massif",
+      "name": "Malapert Massif",
+      "latitude": -86.0,
+      "longitude": 0.0,
+      "file": "malapert-massif-20m-i16.bin",
+      "firstRow": 20754,
+      "firstColumn": 14686,
+      "centerLatitude": -86.0,
+      "centerLongitude": 0.0
+    },
+    "mons-mouton-plateau": {
+      "id": "mons-mouton-plateau",
+      "name": "Mons Mouton Plateau",
+      "latitude": -84.3,
+      "longitude": 30.5,
+      "file": "mons-mouton-plateau-20m-i16.bin",
+      "firstRow": 22139,
+      "firstColumn": 19076,
+      "centerLatitude": -84.3,
+      "centerLongitude": 30.5
+    },
+    "mons-mouton": {
+      "id": "mons-mouton",
+      "name": "Mons Mouton",
+      "latitude": -85.4,
+      "longitude": 31.7,
+      "file": "mons-mouton-20m-i16.bin",
+      "firstRow": 20624,
+      "firstColumn": 18353,
+      "centerLatitude": -85.4,
+      "centerLongitude": 31.7
+    },
+    "nobile-rim-1": {
+      "id": "nobile-rim-1",
+      "name": "Nobile Rim 1",
+      "latitude": -85.4,
+      "longitude": 37.3,
+      "file": "nobile-rim-1-20m-i16.bin",
+      "firstRow": 20237,
+      "firstColumn": 18915,
+      "centerLatitude": -85.4,
+      "centerLongitude": 37.3
+    },
+    "nobile-rim-2": {
+      "id": "nobile-rim-2",
+      "name": "Nobile Rim 2",
+      "latitude": -84.0,
+      "longitude": 58.8,
+      "file": "nobile-rim-2-20m-i16.bin",
+      "firstRow": 19403,
+      "firstColumn": 22475,
+      "centerLatitude": -84.0,
+      "centerLongitude": 58.8
+    },
+    "de-gerlache-rim-2": {
+      "id": "de-gerlache-rim-2",
+      "name": "de Gerlache Rim 2",
+      "latitude": -88.2,
+      "longitude": -64.4,
+      "file": "de-gerlache-rim-2-20m-i16.bin",
+      "firstRow": 15866,
+      "firstColumn": 12225,
+      "centerLatitude": -88.2,
+      "centerLongitude": -64.4
+    },
+    "slater-plain": {
+      "id": "slater-plain",
+      "name": "Slater Plain",
+      "latitude": -87.2,
+      "longitude": 125.4,
+      "file": "slater-plain-20m-i16.bin",
+      "firstRow": 12227,
+      "firstColumn": 18148,
+      "centerLatitude": -87.2,
+      "centerLongitude": 125.4
+    }
+  }
+}

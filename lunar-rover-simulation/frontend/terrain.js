@@ -1,13 +1,13 @@
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=ground-contact';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats } from './earth.js';
+  mountHideUi, loadMoonRegionStats } from './earth.js?v=moon-sites';
 import { mountLunarSimulation } from '../../frontend/lunar-simulation.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
-const assetVersion = 'crater-lod-3';
+const assetVersion = 'moon-sites-1';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -95,6 +95,14 @@ const earthMetadata = await loadEarthMetadata(assetVersion);
 const pageParams = new URLSearchParams(location.search);
 let earthRegion = pageParams.get('region') ?? 'de-gerlache-rim-2';
 let earthSite = earthSiteFromUrl(pageParams); // a specific match chosen in the atlas ("Enter rover")
+let moonSiteMetadata = null;
+try {
+  const response = await fetch(`./assets/moon-sites/moon-sites.json?v=${assetVersion}`);
+  if (response.ok) moonSiteMetadata = await response.json();
+} catch { /* preserve the overview and crater views if the local site tiles are absent */ }
+if (moonSiteMetadata?.sites && !(earthRegion in moonSiteMetadata.sites)) {
+  earthRegion = Object.keys(moonSiteMetadata.sites)[0];
+}
 const moonRegionStats = earthMetadata ? await loadMoonRegionStats() : null;
 let lastMoonView = 'detail';
 let refreshWorldToggle = null; // set once the Earth controls are mounted (end of file)
@@ -553,6 +561,14 @@ function updateReadout(view, descriptor) {
   document.querySelector('.walk-caption').hidden = false;
   if (isEarth()) {
     earthReadout($, view, descriptor);
+  } else if (viewMode === 'moon-site') {
+    const lon = `${Math.abs(descriptor.centerLongitude).toFixed(2)}° ${descriptor.centerLongitude < 0 ? 'W' : 'E'}`;
+    $('site-name').textContent = descriptor.name;
+    $('site-coords').textContent = `${Math.abs(descriptor.centerLatitude).toFixed(2)}° S · ${lon}`;
+    $('site-tag').textContent = 'LANDING SITE';
+    $('view-note').textContent = `LOLA 20 M PIXELS · ${(descriptor.width * view.spacing / 1000).toFixed(2)} × ${(descriptor.height * view.spacing / 1000).toFixed(2)} KM WINDOW`;
+    $('walk-button').innerHTML = '<span class="walk-button-mark" aria-hidden="true">↗</span> Drive this landing site';
+    document.querySelector('.walk-caption').textContent = 'Lunar rover · LOLA terrain at true scale';
   } else if (viewMode === 'detail') {
     $('site-name').textContent = 'De Gerlache Rim 2';
     $('site-coords').textContent = '88.20° S · 64.40° W';
@@ -628,9 +644,24 @@ async function showView(mode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
-    const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}` : mode;
+    const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}`
+      : mode === 'moon-site' ? `moon:${earthRegion}` : mode;
     if (!viewData || viewData.key !== key) {
+      const moonSite = mode === 'moon-site' ? moonSiteMetadata?.sites?.[earthRegion] : null;
+      if (mode === 'moon-site' && (!moonSite || !moonSiteMetadata)) {
+        throw new Error(`LOLA terrain tile is unavailable for ${earthRegion}`);
+      }
       let descriptor = mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion, earthSite)
+        : mode === 'moon-site' ? {
+          ...moonSite,
+          width: moonSiteMetadata.width,
+          height: moonSiteMetadata.height,
+          stridePixels: moonSiteMetadata.stridePixels,
+          pixelSizeM: moonSiteMetadata.pixelSizeM,
+          heightScaleM: moonSiteMetadata.heightScaleM,
+          body: 'moon',
+          file: `moon-sites/${moonSite.file}`,
+        }
         : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
       let data;
       try {
@@ -830,7 +861,8 @@ if (earthMetadata) {
     onRegion(region) {
       earthRegion = region;
       earthSite = null; // picker → that region's top match
-      if (isEarth()) showView('earth'); else refreshWorldToggle();
+      if (isEarth()) showView('earth');
+      else showView(moonViewForRegion(region));
     },
     onToggle: toggleWorld,
   });
@@ -838,7 +870,7 @@ if (earthMetadata) {
   refreshWorldToggle = () => refresh({
     earth: isEarth(),
     region: earthRegion,
-    moonViewName: moonViewForRegion(earthRegion) === 'crater' ? 'polar crater floor' : 'de Gerlache Rim 2',
+    moonViewName: REGIONS[earthRegion]?.name ?? 'polar crater floor',
     site: earthSite,
     view: viewMode,
   });
@@ -846,9 +878,10 @@ if (earthMetadata) {
 }
 
 // From the atlas: ?world=earth opens the Earth analog; &drive=1 puts the rover straight on it.
-// Opened for a region (from the atlas): start on that region's terrain, not the whole-pole overview.
-const startView = pageParams.get('world') === 'earth' && earthMetadata ? 'earth'
-  : pageParams.has('region') && earthMetadata ? moonViewForRegion(earthRegion) : 'overview';
-showView(startView).then(ok => {
+// A region URL opens that candidate's terrain when the relevant data is available.
+const initialView = pageParams.get('world') === 'earth' && earthMetadata ? 'earth'
+  : pageParams.has('region') && (earthMetadata || moonSiteMetadata?.sites?.[earthRegion])
+    ? moonViewForRegion(earthRegion) : 'overview';
+showView(initialView).then(ok => {
   if (ok && pageParams.get('drive') === '1') $('walk-button').click();
 });

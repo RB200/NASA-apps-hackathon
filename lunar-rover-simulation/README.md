@@ -8,6 +8,8 @@ python3 -B data_prep/prepare_lola_3d.py
 
 The app includes a 512 × 512 native-resolution tile near De Gerlache Rim 2; a 1024 × 1024 crater tile sampled at 20 m with a 512 × 512 native-resolution patch around the rover spawn; and a full-cap overview sampled every 32 source pixels (160 m). Drive mode provides a lunar rover with terrain contact and suspension on both local views. The source raster covers 87.5°S to the pole, so the detailed tiles are local rather than a full view of all nine candidate regions.
 
+The **Artemis region** selector loads the matching Moon landing-site terrain as well as the Earth analog. Nine local 1024 × 1024 tiles at 20 m/sample (20.48 km square) are extracted from LOLA `ldem_80s_20m.img` and stored in `frontend/assets/moon-sites/`. Regenerate them with `python3 -B data_prep/prepare_lunar_site_tiles.py` from this folder when the source raster is available at its default Desktop path.
+
 From the repository root, serve the project locally and open the viewer at `http://127.0.0.1:5175/lunar-rover-simulation/frontend/terrain.html`:
 
 ```bash
@@ -21,4 +23,4 @@ The same rover can drive the best Earth analog of each Artemis III region (from 
 - Open straight into Earth mode: `terrain.html?region=slater-plain&world=earth`
 - Earth tiles: `frontend/assets/earth/` (512 × 512 at 30 m = 15.36 km, int16 metres, NASA SRTMGL1 v003), built by `data_prep/prepare_earth_tiles.py` from SRTMGL1 tiles in `../data_prep/cache/srtmgl1/`.
 - Code: `frontend/earth.js` + `frontend/earth.css`. Hooks in `terrain.js` (per-tile pixel size/height scale, Earth colours, no lunar craterlets, Moon⇄Earth toggle, lunar telemetry hidden on Earth) and `rover.js` (`setGravity`; suspension scales with gravity, unchanged on the Moon).
-- Only de Gerlache Rim 2 has its own Moon tile so far; other regions switch to the polar crater view and the HUD says so.
+- Moon-site tiles are described in `frontend/assets/moon-sites/moon-sites.json`. The shared Artemis region selector switches the Moon terrain when in lunar view and the Earth analog when in Earth view.

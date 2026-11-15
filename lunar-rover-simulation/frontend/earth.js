@@ -13,11 +13,6 @@ export function flagEmoji(cc) {
     ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 }
 
-// Moon views in terrain.js that show a given Artemis region. Regions without their own Moon tile
-// fall back to the crater view and say so in the HUD.
-const MOON_VIEW_FOR_REGION = { 'de-gerlache-rim-2': 'detail' };
-const FALLBACK_MOON_VIEW = 'crater';
-
 // Artemis III candidate regions (same as frontend/regions.js): name and Moon centre.
 export const REGIONS = {
   'cabeus-b-peak': { name: 'Peak near Cabeus B', lat: -83.6, lon: -68.6 },
@@ -79,11 +74,11 @@ export async function loadEarthMetadata(version) {
 }
 
 export function moonViewForRegion(region) {
-  return MOON_VIEW_FOR_REGION[region] ?? FALLBACK_MOON_VIEW;
+  return region in REGIONS ? 'moon-site' : 'crater';
 }
 
 export function hasOwnMoonTile(region) {
-  return region in MOON_VIEW_FOR_REGION;
+  return region in REGIONS;
 }
 
 export function earthDescriptor(md, region, chosen = null) {
