@@ -149,7 +149,7 @@ export function applyWorld(scene, body, { keyLight, fillLight } = {}) {
   const coverage = document.getElementById('coverage-note');
   const intro = document.querySelector('.intro');
   moonLook ??= {
-    background: scene.background.clone(),
+    background: scene.background,
     sky: hemi?.color.clone(), ground: hemi?.groundColor.clone(), intensity: hemi?.intensity,
     label: label?.textContent, mark: mark?.innerHTML, coverage: coverage?.textContent,
     intro: intro?.innerHTML, keyIntensity: keyLight?.intensity,
@@ -161,7 +161,7 @@ export function applyWorld(scene, body, { keyLight, fillLight } = {}) {
     : moonLook.intro;
   const earth = body === 'earth';
   document.querySelector('.app-shell')?.classList.toggle('earth-mode', earth);
-  scene.background = earth ? new THREE.Color('#9dbfe0') : moonLook.background.clone();
+  scene.background = earth ? new THREE.Color('#9dbfe0') : moonLook.background;
   // Light haze only far away: the overview camera sits ~30 km out, drive mode looks ~5 km ahead.
   scene.fog = earth ? new THREE.Fog('#b9d1e8', 30000, 140000) : null;
   if (hemi) {

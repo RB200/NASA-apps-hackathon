@@ -10,6 +10,8 @@ The app includes a 512 × 512 native-resolution tile near De Gerlache Rim 2; a 1
 
 The **Artemis region** selector loads the matching Moon landing-site terrain as well as the Earth analog. Nine local 1024 × 1024 tiles at 20 m/sample (20.48 km square) are extracted from LOLA `ldem_80s_20m.img` and stored in `frontend/assets/moon-sites/`. Regenerate them with `python3 -B data_prep/prepare_lunar_site_tiles.py` from this folder when the source raster is available at its default Desktop path.
 
+Lunar views use `frontend/assets/lunar-skybox.webp`, a browser-compatible equirectangular conversion of the provided `Lunar_Skybox.tif`. Earth analog mode retains its own sky.
+
 From the repository root, serve the project locally and open the viewer at `http://127.0.0.1:5175/lunar-rover-simulation/frontend/terrain.html`:
 
 ```bash

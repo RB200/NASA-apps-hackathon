@@ -1,7 +1,7 @@
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=moon-sites-earth-light-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=moon-sites-earth-light-1';
+  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=lunar-skybox-earth-light-1';
 import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=moon-sites-earth-light-1';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -22,6 +22,14 @@ document.querySelector('#scene').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#080d13');
+try {
+  const skybox = await new THREE.TextureLoader().loadAsync('./assets/lunar-skybox.webp');
+  skybox.mapping = THREE.EquirectangularReflectionMapping;
+  skybox.colorSpace = THREE.SRGBColorSpace;
+  scene.background = skybox;
+} catch (error) {
+  console.error('Could not load the lunar skybox; using the plain space background.', error);
+}
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 2, 900000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -313,7 +321,7 @@ function addGround(width, depth, y) {
     new THREE.PlaneGeometry(width * 1.18, depth * 1.18),
     // Unlit, same colour as the sky/space behind it: a lit slab under sloped terrain made the
     // terrain look like a tilted sheet floating above a floor.
-    new THREE.MeshBasicMaterial({ color: scene.background?.clone?.() ?? new THREE.Color('#080d13') })
+    new THREE.MeshBasicMaterial({ color: scene.background.isColor ? scene.background : '#080d13' })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = y;
