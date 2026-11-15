@@ -59,6 +59,10 @@ let walkMode = false;
 let rover = null;
 let dynamics = null;
 let cameraOrbit = 0;
+const DEFAULT_WALK_CAMERA_DISTANCE = 15;
+const MIN_WALK_CAMERA_DISTANCE = 8;
+const MAX_WALK_CAMERA_DISTANCE = 60;
+let walkCameraDistance = DEFAULT_WALK_CAMERA_DISTANCE;
 let enteringDrive = false;
 let walkYaw = 0;
 let walkPitch = 0.08;
@@ -354,12 +358,11 @@ function sampleTerrain({ data, descriptor, positions }, spacing, x, z) {
 
 function updateWalkCamera(dt = 1 / 60, snap = false) {
   const forward = new THREE.Vector3(Math.sin(walkYaw + cameraOrbit), 0, -Math.cos(walkYaw + cameraOrbit));
-  const cameraDistance = 15;
-  const horizontalDistance = cameraDistance * Math.cos(walkPitch);
+  const horizontalDistance = walkCameraDistance * Math.cos(walkPitch);
   const cameraX = rover.position.x - forward.x * horizontalDistance;
   const cameraZ = rover.position.z - forward.z * horizontalDistance;
   const cameraGround = terrainAt(cameraX, cameraZ);
-  const cameraY = Math.max(rover.position.y + 2.5 + cameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
+  const cameraY = Math.max(rover.position.y + 2.5 + walkCameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
   const target = new THREE.Vector3(
     rover.position.x + forward.x * 1.35,
     rover.position.y + 2.4,
@@ -439,6 +442,7 @@ function resetRover() {
   walkYaw = viewMode === 'crater' ? Math.PI / 4 : 0;
   walkPitch = 0.16;
   cameraOrbit = 0;
+  walkCameraDistance = DEFAULT_WALK_CAMERA_DISTANCE;
   dynamics = new RoverDynamics(rover, terrainAt, x, z, walkYaw);
   $('walk-distance').textContent = '0 m';
   $('walk-pace').textContent = '0.0 km/h';
@@ -660,6 +664,16 @@ function endLook(event) {
 }
 renderer.domElement.addEventListener('pointerup', endLook);
 renderer.domElement.addEventListener('pointercancel', endLook);
+renderer.domElement.addEventListener('wheel', event => {
+  if (!walkMode) return;
+  walkCameraDistance = THREE.MathUtils.clamp(
+    walkCameraDistance * Math.exp(event.deltaY * 0.001),
+    MIN_WALK_CAMERA_DISTANCE,
+    MAX_WALK_CAMERA_DISTANCE
+  );
+  updateWalkCamera();
+  event.preventDefault();
+}, { passive: false });
 
 const movementKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
 addEventListener('keydown', event => {

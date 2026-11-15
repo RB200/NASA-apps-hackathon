@@ -43,8 +43,8 @@ try {
 
 # Create virtual environment
 Write-Step "Setting up virtual environment..." 2
-if (-not (Test-Path "backend\.venv")) {
-    Write-Host "  Creating venv..." -ForegroundColor Gray
+if (-not (Test-Path "backend\.venv\pyvenv.cfg") -or -not (Test-Path "backend\.venv\Scripts\python.exe")) {
+    Write-Host "  Creating or repairing venv..." -ForegroundColor Gray
     python3 -m venv backend\.venv
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to create virtual environment"
@@ -55,10 +55,15 @@ if (-not (Test-Path "backend\.venv")) {
 } else {
     Write-Success "Virtual environment already exists"
 }
+if (-not (Test-Path "backend\.venv\pyvenv.cfg") -or -not (Test-Path "backend\.venv\Scripts\python.exe")) {
+    Write-Error "Virtual environment is incomplete after setup"
+    Read-Host "Press Enter to exit"
+    exit 1
+}
 
 # Install dependencies
 Write-Host "  Installing dependencies..." -ForegroundColor Gray
-& backend\.venv\Scripts\pip install -q -r backend\requirements.txt
+& backend\.venv\Scripts\python.exe -m pip install -q -r backend\requirements.txt
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to install dependencies"
     Read-Host "Press Enter to exit"
@@ -76,6 +81,7 @@ Write-Host ""
 Write-Host "  Frontend:  http://localhost:5173" -ForegroundColor Cyan
 Write-Host "  Backend:   http://localhost:8000" -ForegroundColor Cyan
 Write-Host "  API Docs:  http://localhost:8000/docs" -ForegroundColor Cyan
+Write-Host "  Rover:     http://localhost:5175/lunar-rover-simulation/frontend/terrain.html" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  ⏳ Waiting for servers to start..." -ForegroundColor Yellow
 Write-Host ""
@@ -97,18 +103,25 @@ Start-Process powershell -ArgumentList @(
     "cd '$pwd'; Write-Host 'Frontend Server Starting...' -ForegroundColor Green; python3 -m http.server 5173 --directory frontend"
 ) -WindowStyle Normal
 
+# Serve the repository root so the rover page can load its shared and local assets.
+Start-Process powershell -ArgumentList @(
+    "-NoExit",
+    "-Command",
+    "python3 -m http.server 5175 --directory '$PSScriptRoot'"
+) -WindowStyle Normal
+
 # Wait for servers to start
 Start-Sleep -Seconds 3
 
 # Try to open browser
 Write-Host "  ✓ Servers launched in separate windows" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Opening http://localhost:5173 in your browser..." -ForegroundColor Yellow
+Write-Host "  Opening the app in your browser..." -ForegroundColor Yellow
 Write-Host ""
 
 try {
     Start-Process "http://localhost:5173"
-    Write-Success "Browser opened"
+    Write-Success "App opened"
 } catch {
     Write-Host "  Could not auto-open browser - please manually visit:" -ForegroundColor Yellow
     Write-Host "  http://localhost:5173" -ForegroundColor Cyan
