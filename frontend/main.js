@@ -3,8 +3,6 @@ import { sampleMoon, SAMPLE_EARTH } from './sample.js';
 import { mountLunarSimulation } from './lunar-simulation.js';
 
 const API_BASE = 'http://localhost:8000'; // FastAPI backend (build step 4)
-const TEX = 'https://unpkg.com/globe.gl@2.46.2/example/moon-landing-sites/';
-const HOME_VIEW = { lat: -86.5, lng: 20, altitude: 0.3 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
 const C = Object.fromEntries(CONSTRAINTS.map(c => [c.key, c]));
 const $ = id => document.getElementById(id);
@@ -46,135 +44,49 @@ roverLink.href = roverPage.href;
 roverLink.addEventListener('click', () => { roverLink.href = simulation.linkTo(roverPage); });
 telemetryPanel.querySelector('.lunar-body').prepend(roverLink);
 
-// ---------- Region boxes: axis-aligned in a south-polar map (0° lon up), like NASA's map ----------
+// ---------- 2D south-pole map ----------
+// Basemap (assets/lunar-south-pole.webp): 1500 × 1500 px, south-polar stereographic, pole at the
+// centre, 0° longitude up, ~608 km across: the same framing as the LOLA 80°S DEM (checked against
+// Shackleton and two other craters). Regions are placed with LOLA's projection, so they line up.
+const MAP_PX = 1500, MAP_KM = 608, PX_PER_KM = MAP_PX / MAP_KM;
 const DEG = Math.PI / 180;
-function toPolar(lat, lon) {
-  const rho = MOON_RADIUS_KM * (90 + lat) * DEG;
+function polarKm(lat, lon) { // km east / north of the pole, LOLA polar stereographic
+  const rho = 2 * MOON_RADIUS_KM * Math.tan((90 + lat) / 2 * DEG);
   return [rho * Math.sin(lon * DEG), rho * Math.cos(lon * DEG)];
 }
-function fromPolar(x, y) {
-  const rho = Math.hypot(x, y);
-  return [Math.atan2(x, y) / DEG, -90 + rho / MOON_RADIUS_KM / DEG]; // [lon, lat]
-}
-function boxPolygon(r) {
-  const [cx, cy] = toPolar(r.lat, r.lon);
-  const [hw, hh] = [r.boxKm[0] / 2, r.boxKm[1] / 2];
-  const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]];
-  const ring = [];
-  for (let i = 0; i < 4; i++) {
-    const [a, b] = [corners[i], corners[i + 1]];
-    for (let t = 0; t < 8; t++) {
-      const f = t / 8;
-      ring.push(fromPolar(cx + a[0] + (b[0] - a[0]) * f, cy + a[1] + (b[1] - a[1]) * f));
-    }
-  }
-  ring.push(ring[0]);
-  return { type: 'Polygon', coordinates: [ring.reverse()] };
-}
-const boxes = REGIONS.map(r => ({ region: r, geometry: boxPolygon(r) }));
+// Leaflet's simple CRS: [y up from the image bottom, x right], in image pixels.
+const toLatLng = (xKm, yKm) => L.latLng(MAP_PX / 2 + yKm * PX_PER_KM, MAP_PX / 2 + xKm * PX_PER_KM);
 
-// ---------- Globe ----------
+const FULL = L.latLngBounds([0, 0], [MAP_PX, MAP_PX]);
+const moonMap = L.map('globe', { crs: L.CRS.Simple, minZoom: -1.5, maxZoom: 3, zoomSnap: 0.25,
+  attributionControl: false, zoomControl: false, maxBounds: FULL.pad(0.15) });
+L.control.zoom({ position: 'bottomleft' }).addTo(moonMap);
+L.imageOverlay('assets/lunar-south-pole.webp', FULL).addTo(moonMap);
+
 let selected = null;
-const globe = new Globe($('globe'))
-  .globeImageUrl(TEX + 'lunar_surface.jpg')
-  .bumpImageUrl(TEX + 'lunar_bumpmap.jpg')
-  .backgroundImageUrl('https://unpkg.com/three-globe@2.41.0/example/img/night-sky.png')
-  .showGraticules(true)
-  .showAtmosphere(false)
-  .polygonsData(boxes)
-  .polygonGeoJsonGeometry('geometry')
-  .polygonAltitude(d => (d.region === selected ? 0.004 : 0.002))
-  .polygonCapColor(d => (d.region === selected ? 'rgba(255,181,71,0.55)' : 'rgba(255,181,71,0.22)'))
-  .polygonSideColor(() => 'rgba(255,181,71,0.3)')
-  .polygonStrokeColor(() => '#ffb547')
-  .polygonLabel(d => d.region.name)
-  .onPolygonClick(d => select(d.region))
-  .htmlElementsData(REGIONS)
-  .htmlLat('lat').htmlLng('lon').htmlAltitude(0.006)
-  .htmlElement(r => {
-    const el = document.createElement('button');
-    el.className = 'pin' + (r.labelSide === 'left' ? ' left' : '');
-    el.dataset.id = r.id;
-    el.innerHTML = `<span class="dot"></span><span class="txt">${r.name}</span>`;
-    el.onclick = () => select(r);
-    return el;
-  })
-  .pointOfView(HOME_VIEW, 0);
-
-// Configure camera controls - wrap in try/catch for safety
-try {
-  const controls = globe.controls();
-  
-  if (controls) {
-    controls.minDistance = 101;
-    controls.autoRotate = false;
-
-    // Fix 1: Enable continuous pole wrapping
-    // Set spherical angle limits to allow full rotation through both poles
-    if (controls.minPolarAngle !== undefined) {
-      controls.minPolarAngle = 0;      // Allow rotation to north pole (top)
-      controls.maxPolarAngle = Math.PI; // Allow rotation to south pole (bottom)
-    }
-
-    // Enable all movement types
-    controls.enableRotate = true;
-    controls.enableZoom = true;
-    controls.enablePan = true;
-
-    // Prevent auto-rotation if enabled
-    if (controls.autoRotate) {
-      controls.autoRotate = false;
-    }
-
-    // Fix 2: Prevent zoom from causing view rotation
-    // Store the current camera position and restore it during zoom
-    let lastCameraPosition = null;
-
-    const originalControlsUpdate = controls.update.bind(controls);
-    controls.update = function() {
-      // Store position before update
-      if (this.object && this.object.position) {
-        lastCameraPosition = {
-          x: this.object.position.x,
-          y: this.object.position.y,
-          z: this.object.position.z
-        };
-      }
-      
-      originalControlsUpdate.call(this);
-    };
-
-    // Listen for mouse wheel to detect zoom and restore angle
-    try {
-      const canvas = globe.renderer().domElement;
-      let isZooming = false;
-
-      canvas.addEventListener('wheel', (event) => {
-        if (!isZooming && lastCameraPosition) {
-          isZooming = true;
-          
-          setTimeout(() => {
-            isZooming = false;
-          }, 150);
-        }
-      }, { passive: true });
-    } catch (e) {
-      console.warn('Could not set up wheel listener:', e);
-    }
-
-    // Ensure manual pan/rotate allows pole wrapping
-    if (controls.rotateSpeed !== undefined) {
-      controls.rotateSpeed = 1.0;
-    }
-  }
-} catch (e) {
-  console.warn('Camera control setup issue:', e);
-}
-
-window.addEventListener('resize', () => globe.width(innerWidth).height(innerHeight));
+const boxes = REGIONS.map(r => {
+  const [cx, cy] = polarKm(r.lat, r.lon);
+  const [hw, hh] = [r.boxKm[0] / 2, r.boxKm[1] / 2];
+  const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([dx, dy]) => toLatLng(cx + dx, cy + dy));
+  const polygon = L.polygon(corners, { color: '#ffb547', weight: 1.5, fillColor: '#ffb547', fillOpacity: 0.18 })
+    .addTo(moonMap).on('click', () => select(r));
+  const pin = L.marker(toLatLng(cx, cy), {
+    icon: L.divIcon({ className: 'pin-icon', iconSize: [10, 10], iconAnchor: [5, 5],
+      html: `<button class="pin${r.labelSide ? ' ' + r.labelSide : ''}" data-id="${r.id}"><span class="dot"></span><span class="txt">${r.name}</span></button>` }),
+    keyboard: false,
+  }).addTo(moonMap).on('click', () => select(r));
+  return { region: r, polygon, pin, bounds: polygon.getBounds() };
+});
+const HOME_BOUNDS = boxes.reduce((b, x) => b.extend(x.bounds), L.latLngBounds(boxes[0].bounds.getSouthWest(), boxes[0].bounds.getNorthEast())).pad(0.35);
+moonMap.fitBounds(HOME_BOUNDS);
+const goHome = () => moonMap.flyToBounds(HOME_BOUNDS, { duration: 0.8 });
 
 function refreshHighlight() {
-  globe.polygonsData(boxes);
+  for (const b of boxes) {
+    const on = b.region === selected;
+    b.polygon.setStyle({ weight: on ? 2.5 : 1.5, fillOpacity: on ? 0.38 : 0.18 });
+    if (on) b.polygon.bringToFront();
+  }
   document.querySelectorAll('.pin').forEach(el => el.classList.toggle('active', el.dataset.id === selected?.id));
 }
 
@@ -203,7 +115,8 @@ function select(r) {
   selected = r;
   updateRegionTelemetry();
   refreshHighlight();
-  globe.pointOfView({ lat: r.lat, lng: r.lon, altitude: 0.12 }, 900);
+  const box = boxes.find(b => b.region === r);
+  moonMap.flyToBounds(box.bounds.pad(1.2), { paddingBottomRight: [420, 0], maxZoom: 1.5, duration: 0.8 });
   $('demo').hidden = true;
   $('out').hidden = false;
   telemetryPanel.open = false; // give the matches popup the room; one click reopens telemetry
@@ -218,7 +131,7 @@ document.querySelector('[data-close]').onclick = () => {
   $('demo').hidden = false;
   $('out').hidden = true;
   refreshHighlight();
-  globe.pointOfView(HOME_VIEW, 900);
+  goHome();
 };
 
 // ---------- Matching ----------

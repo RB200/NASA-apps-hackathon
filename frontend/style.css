@@ -14,15 +14,20 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
 #globe { position: fixed; inset: 0; }
+/* 2D south-pole map (Leaflet) */
+#globe.leaflet-container { background: #05070d; }
+.pin-icon { background: none; border: 0; overflow: visible; }
+.leaflet-bottom.leaflet-left { margin-bottom: 30px; }
 button { font: inherit; color: inherit; }
 
-/* Region pins: globe.gl centers the element on the point, so keep it dot-sized and hang the text off it */
+/* Region pins: centred on the region, dot-sized, with the label hanging off it */
 .pin { pointer-events: auto; cursor: pointer; position: relative; width: 10px; height: 10px; padding: 0; border: 0;
   background: none; color: #ffe2b0; font: 600 12px/1 system-ui, sans-serif; white-space: nowrap;
   text-shadow: 0 1px 3px #000, 0 0 2px #000; }
 .pin .dot { position: absolute; inset: 1px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px rgba(0,0,0,.5); }
 .pin .txt { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); }
 .pin.left .txt { left: auto; right: 14px; }
+.pin.below .txt { left: 50%; top: 18px; transform: translateX(-50%); }
 .pin:hover .txt, .pin.active .txt { color: #fff; }
 .pin.active .dot { background: #fff; box-shadow: 0 0 0 3px var(--accent); }
 
