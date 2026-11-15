@@ -1,5 +1,6 @@
 import { mountTraverse } from './traverse-ui.js?v=traverse-all-regions-1';
 import { gridTriangle, traverseTile } from './traverse.mjs?v=environment-1';
+import { terrainIndices } from './terrain-chunks.mjs';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
@@ -26,7 +27,9 @@ const assetVersion = 'moon-terrain-despike-2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const overviewPixelRatio = Math.min(devicePixelRatio, 2);
+const drivePixelRatio = Math.min(devicePixelRatio, 1);
+renderer.setPixelRatio(overviewPixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -254,7 +257,11 @@ function varyLunarTextures(material) {
                               dot(cell, vec2(269.5, 183.3)))) * 43758.5453);
       }
 
-      vec4 sampleLunarTexture(sampler2D tex, vec2 uv) {
+      vec4 sampleLunarTexture(sampler2D tex, vec2 uv, float distanceToCamera, vec4 distantValue) {
+        vec2 dx = dFdx(uv), dy = dFdy(uv);
+        // At horizon distances the randomized blend costs three reads per map
+        // and its fine surface detail is barely visible.
+        if (distanceToCamera >= 220.0) return distantValue;
         // Blend offset samples on a triangular grid, using unshifted gradients for mipmapping.
         vec2 grid = vec2(uv.x - uv.y * 0.577350269, uv.y * 1.154700538);
         vec2 cell = floor(grid);
@@ -267,24 +274,26 @@ function varyLunarTextures(material) {
                            vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y), upper);
         weights = weights * weights * (3.0 - 2.0 * weights);
         weights /= weights.x + weights.y + weights.z;
-        vec2 dx = dFdx(uv), dy = dFdy(uv);
-        return textureGrad(tex, uv + lunarOffset(a), dx, dy) * weights.x
+        vec4 detail = textureGrad(tex, uv + lunarOffset(a), dx, dy) * weights.x
              + textureGrad(tex, uv + lunarOffset(b), dx, dy) * weights.y
              + textureGrad(tex, uv + lunarOffset(c), dx, dy) * weights.z;
+        return mix(detail, distantValue, smoothstep(100.0, 220.0, distanceToCamera));
       }`);
-    for (const [chunk, sample] of [
-      ['map_fragment', 'map, vMapUv'],
-      ['aomap_fragment', 'aoMap, vAoMapUv'],
-      ['normal_fragment_maps', 'normalMap, vNormalMapUv'],
-      ['roughnessmap_fragment', 'roughnessMap, vRoughnessMapUv'],
+    for (const [chunk, sample, distantValue] of [
+      // Mean linear color of moon-ground-color.webp.
+      ['map_fragment', 'map, vMapUv', 'vec4(0.256, 0.239, 0.190, 1.0)'],
+      ['aomap_fragment', 'aoMap, vAoMapUv', 'vec4(1.0)'],
+      ['normal_fragment_maps', 'normalMap, vNormalMapUv', 'vec4(0.5, 0.5, 1.0, 1.0)'],
+      ['roughnessmap_fragment', 'roughnessMap, vRoughnessMapUv', 'vec4(1.0)'],
     ]) {
       shader.fragmentShader = shader.fragmentShader.replace(`#include <${chunk}>`,
-        THREE.ShaderChunk[chunk].replaceAll(`texture2D( ${sample} )`, `sampleLunarTexture( ${sample} )`));
+        THREE.ShaderChunk[chunk].replaceAll(`texture2D( ${sample} )`,
+          `sampleLunarTexture( ${sample}, length(vViewPosition), ${distantValue} )`));
     }
   };
 }
 
-function createSurface(data, descriptor, heightOrigin = null, colorRange = null, lunarTextures = null) {
+function createSurface(data, descriptor, heightOrigin = null, colorRange = null, lunarTextures = null, cutout = null) {
   const { width, height } = descriptor;
   const spacing = pixelSize(descriptor) * descriptor.stridePixels;
   const stats = gridStats(data, heightScale(descriptor));
@@ -315,7 +324,7 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
       }
       if (lunarDetail) {
         const patches = terrainNoise(x + 811, z, 110) - 0.5;
-        const mottling = terrainNoise(x - 233, z + 571, spacing * 3) - 0.5;
+        const mottling = terrainNoise(x - 233, z + 571, 60) - 0.5;
         const tint = terrainNoise(x + 491, z - 319, 60) - 0.5;
         const brightness = 0.15 + 0.20 * THREE.MathUtils.clamp(t, 0, 1) +
           0.080 * patches + 0.060 * mottling;
@@ -354,19 +363,97 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
       side: THREE.DoubleSide })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
   if (lunarTextures) varyLunarTextures(material);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.receiveShadow = true;
-  return { mesh, stats, spacing, width, height, midpoint };
+  const mesh = viewMode === 'overview' ? new THREE.Mesh(geometry, material)
+    : chunkSurface(geometry, material, width, height, spacing, cutout);
+  if (mesh.isGroup) geometry.dispose();
+  return { mesh, positions, stats, spacing, width, height, midpoint };
+}
+
+function chunkSurface(source, material, width, height, spacing, cutout) {
+  const group = new THREE.Group();
+  const chunkSize = 64;
+  group.userData.detailRadius = Math.max(350, spacing * 40);
+  const stops = (size, seams) => {
+    const boundaries = new Set([size - 1, ...seams]);
+    for (let i = 0; i < size - 1; i += chunkSize) boundaries.add(i);
+    return [...boundaries].sort((a, b) => a - b);
+  };
+  const rowStops = stops(height, cutout ? [cutout.top, cutout.bottom] : []);
+  const colStops = stops(width, cutout ? [cutout.left, cutout.right] : []);
+  for (let r = 1; r < rowStops.length; r++) {
+    const row = rowStops[r - 1];
+    const rows = rowStops[r] - row + 1;
+    for (let c = 1; c < colStops.length; c++) {
+      const col = colStops[c - 1];
+      if (cutout && row >= cutout.top && row < cutout.bottom &&
+          col >= cutout.left && col < cutout.right) continue;
+      const cols = colStops[c] - col + 1;
+      const full = new THREE.BufferGeometry();
+      const distant = new THREE.BufferGeometry();
+      for (const [name, { array, itemSize }] of Object.entries(source.attributes)) {
+        const values = new Float32Array(rows * cols * itemSize);
+        for (let i = 0; i < rows; i++) {
+          const start = ((row + i) * width + col) * itemSize;
+          values.set(array.subarray(start, start + cols * itemSize), i * cols * itemSize);
+        }
+        const attribute = new THREE.BufferAttribute(values, itemSize);
+        full.setAttribute(name, attribute);
+        distant.setAttribute(name, attribute);
+      }
+      full.setIndex(new THREE.BufferAttribute(terrainIndices(cols, rows, 1), 1));
+      distant.setIndex(new THREE.BufferAttribute(terrainIndices(cols, rows, 8), 1));
+      full.computeBoundingBox();
+      full.computeBoundingSphere();
+      distant.boundingBox = full.boundingBox;
+      distant.boundingSphere = full.boundingSphere;
+      const chunk = new THREE.Mesh(full, material);
+      chunk.userData = { full, distant };
+      group.add(chunk);
+    }
+  }
+  return group;
+}
+
+function updateTerrainDetail() {
+  for (const layer of [surface, fineSurface]) {
+    if (!layer?.isGroup) continue;
+    const detailRadius = layer.userData.detailRadius;
+    // Measure horizontally so a nearby high ridge stays detailed.
+    const x = (rover?.position.x ?? 0) - layer.position.x;
+    const z = (rover?.position.z ?? 0) - layer.position.z;
+    for (const chunk of layer.children) {
+      const { full, distant } = chunk.userData;
+      const bounds = full.boundingBox;
+      const dx = Math.max(bounds.min.x - x, x - bounds.max.x, 0);
+      const dz = Math.max(bounds.min.z - z, z - bounds.max.z, 0);
+      const distanceSquared = dx * dx + dz * dz;
+      const threshold = chunk.geometry === full ? detailRadius * 1.2 : detailRadius;
+      chunk.geometry = !walkMode || distanceSquared <= threshold * threshold ? full : distant;
+      chunk.receiveShadow = walkMode && distanceSquared <= 80 * 80;
+    }
+  }
+}
+
+function disposeSurface(layer) {
+  scene.remove(layer);
+  if (layer.isGroup) {
+    for (const chunk of layer.children) {
+      chunk.userData.full.dispose();
+      chunk.userData.distant.dispose();
+    }
+    layer.children[0].material.dispose();
+  } else {
+    layer.geometry.dispose();
+    layer.material.dispose();
+  }
 }
 
 function clearView() {
   if (surface) {
-    scene.remove(surface);
-    surface.geometry.dispose(); surface.material.dispose(); surface = null;
+    disposeSurface(surface); surface = null;
   }
   if (fineSurface) {
-    scene.remove(fineSurface);
-    fineSurface.geometry.dispose(); fineSurface.material.dispose(); fineSurface = null;
+    disposeSurface(fineSurface); fineSurface = null;
   }
   if (ground) { scene.remove(ground); ground.geometry.dispose(); ground.material.dispose(); ground = null; }
   if (siteMarker) { scene.remove(siteMarker); siteMarker.geometry.dispose(); siteMarker.material.dispose(); siteMarker = null; }
@@ -414,22 +501,60 @@ function addSiteMarker(view, descriptor, data) {
   scene.add(marker); siteMarker = marker;
 }
 
-const fineTerrainOffsetY = 0.15;
+function alignCraterDetail(coarse, fine) {
+  const base = coarse.descriptor;
+  const detail = fine.descriptor;
+  const coarseStep = pixelSize(base) * base.stridePixels;
+  const fineStep = pixelSize(detail) * detail.stridePixels;
+  const fineCol = x => x / fineStep + (detail.width - 1) / 2;
+  const fineRow = z => (detail.height - 1) / 2 - z / fineStep;
+  const centerCol = (base.width - 1) / 2 + detail.offsetX / coarseStep;
+  const centerRow = (base.height - 1) / 2 - detail.offsetZ / coarseStep;
+  const halfCols = (detail.width - 1) * fineStep / (2 * coarseStep);
+  const halfRows = (detail.height - 1) * fineStep / (2 * coarseStep);
+  const cutout = {
+    left: Math.ceil(centerCol - halfCols), right: Math.floor(centerCol + halfCols),
+    top: Math.ceil(centerRow - halfRows), bottom: Math.floor(centerRow + halfRows),
+  };
+  const ratio = coarseStep / fineStep;
+  const width = (cutout.right - cutout.left) * ratio + 1;
+  const height = (cutout.bottom - cutout.top) * ratio + 1;
+  const offsetX = ((cutout.left + cutout.right - (base.width - 1)) / 2) * coarseStep;
+  const offsetZ = ((base.height - 1 - cutout.top - cutout.bottom) / 2) * coarseStep;
+  const data = new Float32Array(width * height);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const edge = Math.min(row, col, height - 1 - row, width - 1 - col) * fineStep;
+      const x = offsetX - detail.offsetX + (col - (width - 1) / 2) * fineStep;
+      const z = offsetZ - detail.offsetZ + ((height - 1) / 2 - row) * fineStep;
+      const readFine = gridTriangle(detail.width, detail.height, fineCol(x), fineRow(z));
+      const fineHeight = readFine(i => fine.data[i]);
+      if (edge >= 80) {
+        data[row * width + col] = fineHeight;
+        continue;
+      }
+      const readBase = gridTriangle(base.width, base.height,
+        cutout.left + col / ratio, cutout.top + row / ratio);
+      const baseHeight = readBase(i => coarse.data[i]) * heightScale(base) / heightScale(detail);
+      data[row * width + col] = THREE.MathUtils.lerp(baseHeight, fineHeight,
+        THREE.MathUtils.smoothstep(edge, 0, 80));
+    }
+  }
+  return { cutout, fine: { data, descriptor: { ...detail, width, height, offsetX, offsetZ } } };
+}
 
 function terrainAt(x, z) {
-  const coarse = sampleTerrain(viewData, currentView.spacing, x, z);
   const fine = viewData.fine;
-  if (!fine) return coarse;
-  const spacing = metadata.pixelSizeM * fine.descriptor.stridePixels;
-  const localX = x - (fine.descriptor.offsetX ?? 0);
-  const localZ = z - (fine.descriptor.offsetZ ?? 0);
-  if (Math.abs(localX) > (fine.descriptor.width - 1) * spacing / 2 ||
-      Math.abs(localZ) > (fine.descriptor.height - 1) * spacing / 2) return coarse;
-
-  // Both meshes render here, so contact must use the upper surface.
-  const detail = sampleTerrain(fine, spacing, localX, localZ);
-  detail.y += fineTerrainOffsetY;
-  return detail.y >= coarse.y ? detail : coarse;
+  if (fine) {
+    const spacing = pixelSize(fine.descriptor) * fine.descriptor.stridePixels;
+    const localX = x - fine.descriptor.offsetX;
+    const localZ = z - fine.descriptor.offsetZ;
+    if (Math.abs(localX) <= (fine.descriptor.width - 1) * spacing / 2 &&
+        Math.abs(localZ) <= (fine.descriptor.height - 1) * spacing / 2) {
+      return sampleTerrain(fine, spacing, localX, localZ);
+    }
+  }
+  return sampleTerrain(viewData, currentView.spacing, x, z);
 }
 
 function sampleTerrain({ data, descriptor, positions }, spacing, x, z) {
@@ -560,7 +685,10 @@ function resetRover(spawn = null) {
   $('walk-distance').textContent = '0 m';
   $('walk-pace').textContent = '0.0 km/h';
   $('walk-ground').textContent = `${Math.round(terrainAt(x, z).elevation).toLocaleString()} m`;
-  camera.near = 0.25;
+  camera.near = 0.75;
+  const { width, height, spacing, stats } = currentView;
+  camera.far = Math.hypot(width * spacing, height * spacing,
+    (stats.max - stats.min) * verticalExaggeration) + 500;
   camera.updateProjectionMatrix();
   updateWalkCamera(0, true);
   updateDriveTelemetry();
@@ -571,6 +699,9 @@ function enterWalkMode(spawn = null) {
   keyLight.castShadow = true;
   if (siteMarker) siteMarker.visible = false;
   walkMode = true;
+  renderer.setPixelRatio(drivePixelRatio);
+  driveFrameTime = 1 / 60;
+  scaleCheckElapsed = 0;
   controls.enabled = false;
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
@@ -602,6 +733,7 @@ function setHeadlightLevel(level) {
 function exitWalkMode() {
   if (!walkMode) return;
   walkMode = false;
+  renderer.setPixelRatio(overviewPixelRatio);
   traverse.leave();
   walkKeys.clear();
   lookPointerId = null;
@@ -788,26 +920,25 @@ async function showView(mode) {
         ? { descriptor: metadata.craterDetail, data: await readGrid(metadata.craterDetail) }
         : null;
       if (request !== viewRequest) return false;
-      viewData = { mode, key, descriptor, data, fine };
+      const coarse = { mode, key, descriptor, data };
+      viewData = fine ? { ...coarse, ...alignCraterDetail(coarse, fine) } : coarse;
     }
     if (mode !== 'earth') lastMoonView = mode;
     applyWorld(scene, mode === 'earth' ? 'earth' : 'moon', { keyLight, fillLight });
     setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
     refreshWorldToggle?.();
     clearView();
-    const view = createSurface(viewData.data, viewData.descriptor, null, null, lunarTextures);
-    viewData.positions = view.mesh.geometry.attributes.position.array;
+    const view = createSurface(viewData.data, viewData.descriptor, null, null, lunarTextures, viewData.cutout);
+    viewData.positions = view.positions;
     currentView = view;
     surface = view.mesh;
     scene.add(surface);
     if (viewData.fine) {
       const detail = createSurface(viewData.fine.data, viewData.fine.descriptor, view.midpoint, view.stats, lunarTextures);
       fineSurface = detail.mesh;
-      viewData.fine.positions = fineSurface.geometry.attributes.position.array;
+      viewData.fine.positions = detail.positions;
       fineSurface.position.x = viewData.fine.descriptor.offsetX ?? 0;
       fineSurface.position.z = viewData.fine.descriptor.offsetZ ?? 0;
-      fineSurface.position.y += fineTerrainOffsetY;
-      fineSurface.renderOrder = 1;
       scene.add(fineSurface);
     }
     const extentX = view.width * view.spacing;
@@ -929,10 +1060,25 @@ addEventListener('resize', () => {
   else if (currentView) frameView(currentView);
 });
 
+let driveFrameTime = 1 / 60;
+let scaleCheckElapsed = 0;
 renderer.setAnimationLoop(() => {
   const frameSeconds = walkClock.getDelta();
   const dt = Math.min(frameSeconds, 0.05);
   if (walkMode && !traverse.reportOpen) {
+    // Keep the HUD at native resolution while reducing WebGL fill cost on slow devices.
+    if (frameSeconds < 1) {
+      driveFrameTime += (Math.min(frameSeconds, 0.25) - driveFrameTime) * 0.10;
+      scaleCheckElapsed += frameSeconds;
+      if (scaleCheckElapsed >= 0.75) {
+        scaleCheckElapsed = 0;
+        const ratio = renderer.getPixelRatio();
+        const minimum = Math.min(drivePixelRatio, 0.65);
+        const next = driveFrameTime > 1 / 40 ? Math.max(minimum, ratio - 0.15)
+          : driveFrameTime < 1 / 55 ? Math.min(drivePixelRatio, ratio + 0.05) : ratio;
+        if (next !== ratio) renderer.setPixelRatio(next);
+      }
+    }
     const running = simulation.clock.running;
     // Keep simulated UTC at the selected rate even when rendering runs slowly.
     // Bound only the physics step to preserve the rover's contact stability.
@@ -961,6 +1107,7 @@ renderer.setAnimationLoop(() => {
   } else if (!walkMode) {
     controls.update();
   }
+  updateTerrainDetail();
   renderer.render(scene, camera);
 });
 
