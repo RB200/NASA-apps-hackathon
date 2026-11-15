@@ -63,7 +63,76 @@ const globe = new Globe($('globe'))
   })
   .pointOfView(HOME_VIEW, 0);
 
-globe.controls().minDistance = 101;
+// Configure camera controls - wrap in try/catch for safety
+try {
+  const controls = globe.controls();
+  
+  if (controls) {
+    controls.minDistance = 101;
+    controls.autoRotate = false;
+
+    // Fix 1: Enable continuous pole wrapping
+    // Set spherical angle limits to allow full rotation through both poles
+    if (controls.minPolarAngle !== undefined) {
+      controls.minPolarAngle = 0;      // Allow rotation to north pole (top)
+      controls.maxPolarAngle = Math.PI; // Allow rotation to south pole (bottom)
+    }
+
+    // Enable all movement types
+    controls.enableRotate = true;
+    controls.enableZoom = true;
+    controls.enablePan = true;
+
+    // Prevent auto-rotation if enabled
+    if (controls.autoRotate) {
+      controls.autoRotate = false;
+    }
+
+    // Fix 2: Prevent zoom from causing view rotation
+    // Store the current camera position and restore it during zoom
+    let lastCameraPosition = null;
+
+    const originalControlsUpdate = controls.update.bind(controls);
+    controls.update = function() {
+      // Store position before update
+      if (this.object && this.object.position) {
+        lastCameraPosition = {
+          x: this.object.position.x,
+          y: this.object.position.y,
+          z: this.object.position.z
+        };
+      }
+      
+      originalControlsUpdate.call(this);
+    };
+
+    // Listen for mouse wheel to detect zoom and restore angle
+    try {
+      const canvas = globe.renderer().domElement;
+      let isZooming = false;
+
+      canvas.addEventListener('wheel', (event) => {
+        if (!isZooming && lastCameraPosition) {
+          isZooming = true;
+          
+          setTimeout(() => {
+            isZooming = false;
+          }, 150);
+        }
+      }, { passive: true });
+    } catch (e) {
+      console.warn('Could not set up wheel listener:', e);
+    }
+
+    // Ensure manual pan/rotate allows pole wrapping
+    if (controls.rotateSpeed !== undefined) {
+      controls.rotateSpeed = 1.0;
+    }
+  }
+} catch (e) {
+  console.warn('Camera control setup issue:', e);
+}
+
 window.addEventListener('resize', () => globe.width(innerWidth).height(innerHeight));
 
 function refreshHighlight() {

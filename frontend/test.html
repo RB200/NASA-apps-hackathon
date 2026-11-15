@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NASA App - Test Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+    .test {
+      background: white;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border-left: 4px solid #ccc;
+    }
+    .test.pass {
+      border-left-color: #4CAF50;
+      background: #f1f8f4;
+    }
+    .test.fail {
+      border-left-color: #f44336;
+      background: #fef1f1;
+    }
+    h1 { color: #333; }
+    code { background: #eee; padding: 2px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>🚀 NASA Hackathon - System Test</h1>
+  
+  <div class="test" id="frontend">
+    <strong>Frontend Server:</strong> Testing...
+  </div>
+  
+  <div class="test" id="backend">
+    <strong>Backend Server:</strong> Testing...
+  </div>
+  
+  <div class="test" id="libs">
+    <strong>Required Libraries:</strong> Testing...
+  </div>
+  
+  <div class="test" id="globe">
+    <strong>Globe.js Library:</strong> Testing...
+  </div>
+  
+  <div class="test" id="modules">
+    <strong>App Modules:</strong> Testing...
+  </div>
+  
+  <div style="margin-top: 30px; padding: 15px; background: white; border-radius: 5px;">
+    <h3>Results Summary</h3>
+    <p id="summary">Running tests...</p>
+    <p>
+      <a href="/" style="color: #1976d2; text-decoration: none;">← Back to Main App</a>
+    </p>
+  </div>
+
+  <script>
+    const tests = {};
+    
+    function updateTest(name, status, message) {
+      tests[name] = status;
+      const el = document.getElementById(name);
+      el.className = 'test ' + (status ? 'pass' : 'fail');
+      el.innerHTML = `<strong>${name.charAt(0).toUpperCase() + name.slice(1)}:</strong> ${message || (status ? '✓ OK' : '✗ FAILED')}`;
+    }
+    
+    // Test 1: Frontend
+    updateTest('frontend', true, '✓ This page loaded successfully');
+    
+    // Test 2: Backend
+    fetch('http://localhost:8000/docs')
+      .then(r => {
+        updateTest('backend', r.ok, r.ok ? '✓ Responding on port 8000' : `✗ Response code: ${r.status}`);
+      })
+      .catch(e => {
+        updateTest('backend', false, `✗ Cannot reach: ${e.message}`);
+      });
+    
+    // Test 3: Check required libraries
+    const requiredScripts = [
+      { name: 'Three.js (via globe.gl)', url: 'https://unpkg.com/globe.gl@2.46.2/dist/globe.gl.min.js' },
+      { name: 'Leaflet', url: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' }
+    ];
+    
+    let libsOk = 0;
+    requiredScripts.forEach(lib => {
+      fetch(lib.url, { method: 'HEAD' })
+        .then(r => {
+          if (r.ok) libsOk++;
+          if (libsOk === requiredScripts.length) {
+            updateTest('libs', true, '✓ All CDN libraries accessible');
+          }
+        })
+        .catch(e => {
+          updateTest('libs', false, `✗ ${lib.name} not accessible`);
+        });
+    });
+    
+    // Test 4: Check globe.js loads
+    if (typeof Globe !== 'undefined') {
+      updateTest('globe', true, '✓ globe.gl loaded and accessible');
+    } else {
+      setTimeout(() => {
+        if (typeof Globe !== 'undefined') {
+          updateTest('globe', true, '✓ globe.gl loaded');
+        } else {
+          updateTest('globe', false, '✗ globe.gl not loaded (check network)');
+        }
+      }, 1000);
+    }
+    
+    // Test 5: Check modules can load
+    async function testModules() {
+      try {
+        const regionsRes = await fetch('/regions.js');
+        const sampleRes = await fetch('/sample.js');
+        const mainRes = await fetch('/main.js');
+        
+        if (regionsRes.ok && sampleRes.ok && mainRes.ok) {
+          updateTest('modules', true, '✓ All modules loadable');
+        } else {
+          updateTest('modules', false, '✗ Some modules failed to load');
+        }
+      } catch (e) {
+        updateTest('modules', false, `✗ Module check failed: ${e.message}`);
+      }
+    }
+    
+    setTimeout(testModules, 500);
+    
+    // Update summary after 2 seconds
+    setTimeout(() => {
+      const passed = Object.values(tests).filter(t => t).length;
+      const total = Object.keys(tests).length;
+      const allPass = passed === total;
+      
+      const summary = document.getElementById('summary');
+      if (allPass) {
+        summary.innerHTML = `<span style="color: #4CAF50; font-weight: bold;">✓ All systems operational! ${passed}/${total}</span><br>You can now go to the <a href="/" style="color: #1976d2;">main app</a>.`;
+      } else {
+        summary.innerHTML = `<span style="color: #f44336; font-weight: bold;">⚠ Some issues detected: ${passed}/${total} tests passing</span><br>Check the results above for details.`;
+      }
+    }, 2000);
+  </script>
+</body>
+</html>
