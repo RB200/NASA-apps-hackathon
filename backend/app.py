@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 CORE_FEATURES = ["meanSlope", "p90Slope", "roughness", "relief"]
@@ -86,7 +86,8 @@ IS_SAMPLE = EARTH_SAMPLE or MOON_SAMPLE
 SAMPLE_PARTS = [name for name, s in (("earth", EARTH_SAMPLE), ("moon", MOON_SAMPLE)) if s]
 
 app = FastAPI(title="Space Broncos – Lunar terrain analogs")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"],
+                   expose_headers=["X-Dem-Source", "X-Tile-Size", "X-Pixel-Size-M"])
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -195,3 +196,19 @@ def match_endpoint(
     keys = list(dict.fromkeys(keys))  # dedupe, keep order
     result = match(region, keys, n, include_snow)
     return {"region": region, "constraints": keys, "sample": IS_SAMPLE, "sampleParts": SAMPLE_PARTS, **result}
+
+
+@app.get("/rover-tile")
+def rover_tile(lat: float = Query(..., ge=-83, le=83), lon: float = Query(..., ge=-180, le=180)):
+    """15.36 km x 15.36 km Earth tile at 30 m for the rover simulator (int16 metres, little-endian).
+
+    Built on demand from NASA SRTMGL1/ASTGTM (downloaded once if missing), then cached.
+    """
+    import rover_tiles
+    try:
+        data, source = rover_tiles.cached_tile(lat, lon)
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(404, str(error))
+    return Response(data, media_type="application/octet-stream", headers={
+        "X-Dem-Source": source, "X-Tile-Size": str(rover_tiles.SIZE),
+        "X-Pixel-Size-M": str(rover_tiles.SPACING_M), "Cache-Control": "public, max-age=86400"})

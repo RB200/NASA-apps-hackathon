@@ -14,3 +14,14 @@
 .app-shell.earth-mode .vignette { opacity: .35; }
 .app-shell.earth-mode .intro h1, .app-shell.earth-mode .intro p, .app-shell.earth-mode .eyebrow,
 .app-shell.earth-mode .top-mark, .app-shell.earth-mode .back-link, .app-shell.earth-mode .bottomline { text-shadow: 0 1px 6px rgba(0,0,0,.7); color: #f4f7fa; }
+
+/* Hide UI (drive view only) */
+.hide-ui-button { position: absolute; z-index: 6; right: 18px; bottom: 16px; display: none; padding: 6px 9px; border: 1px solid var(--line); border-radius: 3px; background: rgba(11,17,21,.72); color: #c8d1ce; font-size: 10px; cursor: pointer; backdrop-filter: blur(8px); }
+.hide-ui-button:hover { color: white; border-color: rgba(237,170,120,.5); }
+.app-shell.walk-mode .hide-ui-button { display: block; }
+.app-shell.walk-mode.ui-hidden .walk-hud,
+.app-shell.walk-mode.ui-hidden #drive-telemetry,
+.app-shell.walk-mode.ui-hidden .topbar,
+.app-shell.walk-mode.ui-hidden .walk-crosshair { display: none !important; }
+.app-shell.walk-mode.ui-hidden .hide-ui-button { opacity: .45; }
+.app-shell.walk-mode.ui-hidden .hide-ui-button:hover { opacity: 1; }

@@ -115,6 +115,15 @@ button.primary:disabled { opacity: .4; cursor: default; }
 .pc div:first-child li::marker { color: var(--good); }
 .pc div:last-child li::marker { color: var(--bad); }
 
+/* Region popup: Refine priorities (collapsed) and Enter rover */
+#refine { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+#refine summary { cursor: pointer; font-weight: 600; list-style-position: inside; }
+#refine summary .muted { font-weight: 400; font-size: 12px; margin: 0; }
+#refine[open] summary { margin-bottom: 6px; }
+#refine button.primary { margin-top: 12px; }
+.rover-button { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 12px 0 4px; }
+.rover-button small { font-size: 11px; font-weight: 500; letter-spacing: 0; opacity: .75; }
+
 #credits { position: fixed; left: 16px; right: 16px; bottom: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
 
 @media (max-width: 760px) {
@@ -126,7 +135,7 @@ button.primary:disabled { opacity: .4; cursor: default; }
     width: min(316px, calc(100vw - 24px));
     max-height: max(34px, calc(38vh - var(--lunar-top) - 4px));
   }
-  #pick[hidden] ~ .right-panels:has(#out[hidden]) #lunar-telemetry {
+  .right-panels:has(#out[hidden]) #lunar-telemetry {
     max-height: min(410px, calc(100dvh - var(--lunar-top) - 12px));
   }
   #lunar-telemetry:not([open]) { width: auto; }

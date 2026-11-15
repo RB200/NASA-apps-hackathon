@@ -178,14 +178,20 @@ function refreshHighlight() {
   document.querySelectorAll('.pin').forEach(el => el.classList.toggle('active', el.dataset.id === selected?.id));
 }
 
-// ---------- Panel 1: ranked constraints ----------
+// ---------- Priorities (inside the popup's "Refine priorities") ----------
+// Default: every terrain feature that has data, in this order. Users can re-rank under Refine.
+const DEFAULT_ORDER = ['p90Slope', 'roughness', 'relief', 'meanSlope', 'shape'];
 let priorities = []; // constraint keys, most important first
+let customized = false;
 
 // Which features have data on both Moon and Earth: the backend says so; without it, the sample set.
 let available = new Set(['meanSlope', 'p90Slope', 'roughness', 'relief']);
 fetch(`${API_BASE}/health`).then(r => r.json()).then(h => {
   if (h.features) available = new Set(h.features);
-  if (selected) renderOptions();
+  if (selected && !customized) {
+    priorities = defaultPriorities(); // now including Shape if both datasets have it
+    renderOptions(); renderChips(); search();
+  } else if (selected) renderOptions();
 }).catch(() => {});
 const usable = c => !c.pending && available.has(c.key);
 
@@ -202,8 +208,13 @@ function renderOptions() {
     </div>`).join('');
   $('options').querySelectorAll('input').forEach(cb => cb.onchange = () => {
     priorities = cb.checked ? [...priorities, cb.value] : priorities.filter(k => k !== cb.value);
+    customized = true;
     renderChips();
   });
+}
+
+function defaultPriorities() {
+  return DEFAULT_ORDER.filter(k => usable(C[k]));
 }
 
 function renderChips() {
@@ -213,10 +224,13 @@ function renderChips() {
       <button class="icon" data-k="${k}" aria-label="Remove ${C[k].label}">×</button></li>`).join('');
   $('chips').querySelectorAll('button').forEach(b => b.onclick = () => {
     priorities = priorities.filter(k => k !== b.dataset.k);
+    customized = true;
     renderOptions(); renderChips();
   });
   $('chosen-label').hidden = priorities.length === 0;
   $('go').disabled = priorities.length === 0;
+  $('refine-summary').textContent = priorities.length
+    ? `· ${priorities.map(k => C[k].label).join(' › ')}` : '';
 }
 
 // Rank → weight: 1st gets n, 2nd n-1, … normalized to sum 1. No sliders to guess.
@@ -231,27 +245,29 @@ function select(r) {
   updateRegionTelemetry();
   refreshHighlight();
   globe.pointOfView({ lat: r.lat, lng: r.lon, altitude: 0.12 }, 900);
-  $('pick').hidden = false;
-  $('out').hidden = true;
+  $('out').hidden = false;
+  telemetryPanel.open = false; // give the matches popup the room; one click reopens telemetry
   $('r-name').textContent = r.name;
-  $('r-meta').textContent = `${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
+  $('r-meta').textContent = `Moon · ${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
+  if (!customized || !priorities.length) priorities = defaultPriorities();
   renderOptions(); renderChips();
+  search();
 }
 
 document.querySelector('[data-close]').onclick = () => {
   selected = null;
   updateRegionTelemetry();
-  $('pick').hidden = true;
   $('out').hidden = true;
   refreshHighlight();
   globe.pointOfView(HOME_VIEW, 900);
 };
-$('out-close').onclick = () => { $('out').hidden = true; };
 
 // ---------- Matching ----------
 let lastResult = null;
 
-$('go').onclick = async () => {
+$('go').onclick = () => search();
+
+async function search() {
   if (!selected || !priorities.length) return;
   $('out').hidden = false;
   showList();
@@ -269,7 +285,7 @@ $('go').onclick = async () => {
     lastResult = sampleMatch(selected.id, weights(), 5);
   }
   renderResults();
-};
+}
 
 // Client-side version of the scoring, used with placeholder data only.
 // Same response shape the backend should return (see CLAUDE.md "API contract").
@@ -343,6 +359,12 @@ function showDetail(m) {
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '');
 
+  // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
+  const sample = lastResult.source !== 'backend';
+  $('d-rover').disabled = sample;
+  $('d-rover-note').textContent = sample ? 'needs the backend running' : 'drive this spot · toggle Moon ⇄ Earth';
+  $('d-rover').onclick = () => { location.href = roverLinkFor(m); };
+
   const [mission, why] = missionFit(m.features);
   $('d-mission').innerHTML = `<b>${mission}</b> — ${why}`;
 
@@ -379,4 +401,18 @@ function showDetail(m) {
   setTimeout(() => { map.invalidateSize(); map.fitBounds(bounds, { padding: [10, 10] }); }, 0);
 }
 
+function roverLinkFor(m) {
+  const url = new URL(roverPage);
+  url.search = new URLSearchParams({
+    region: selected.id, world: 'earth', drive: '1',
+    lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), name: m.name, country: m.country ?? '',
+    match: Math.round(m.match),
+  });
+  return simulation.linkTo(url); // carries the lunar clock across, like the telemetry link
+}
+
 loadRegionMeasurements();
+
+// Coming back from the rover (…/index.html?region=…) reopens that region's matches.
+const startRegion = REGIONS.find(r => r.id === new URLSearchParams(location.search).get('region'));
+if (startRegion) select(startRegion);

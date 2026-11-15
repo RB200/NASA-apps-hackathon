@@ -1,6 +1,7 @@
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=ground-contact';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
-  mountEarthControls, moonViewForRegion, MOON_GRAVITY } from './earth.js';
+  mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
+  mountHideUi, loadMoonRegionStats } from './earth.js';
 import { mountLunarSimulation } from '../../frontend/lunar-simulation.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -91,13 +92,17 @@ const simulation = mountLunarSimulation(driveTelemetry, {
 });
 // Earth analog mode (earth.js). Earth tiles carry their own pixel size and height scale.
 const earthMetadata = await loadEarthMetadata(assetVersion);
-let earthRegion = new URLSearchParams(location.search).get('region') ?? 'de-gerlache-rim-2';
+const pageParams = new URLSearchParams(location.search);
+let earthRegion = pageParams.get('region') ?? 'de-gerlache-rim-2';
+let earthSite = earthSiteFromUrl(pageParams); // a specific match chosen in the atlas ("Enter rover")
+const moonRegionStats = earthMetadata ? await loadMoonRegionStats() : null;
 let lastMoonView = 'detail';
 let refreshWorldToggle = null; // set once the Earth controls are mounted (end of file)
 const isEarth = () => viewMode === 'earth';
 const pixelSize = descriptor => descriptor.pixelSizeM ?? metadata.pixelSizeM;
 const heightScale = descriptor => descriptor.heightScaleM ?? metadata.heightScaleM;
 const atlasLink = document.querySelector('.back-link');
+if (earthMetadata) atlasLink.href = atlasBackHref(atlasLink.href, earthRegion); // reopen this region's matches
 const atlasPage = atlasLink.href;
 atlasLink.addEventListener('click', () => { atlasLink.href = simulation.linkTo(atlasPage); });
 
@@ -121,7 +126,7 @@ function elevationColor(t) {
 const colorLut = Array.from({ length: 256 }, (_, i) => elevationColor(i / 255));
 
 async function readGrid(descriptor) {
-  const response = await fetch(`./assets/${descriptor.file}?v=${assetVersion}`);
+  const response = await fetch(descriptor.url ?? `./assets/${descriptor.file}?v=${assetVersion}`);
   if (!response.ok) throw new Error(`Could not load ${descriptor.file}`);
   const buffer = await response.arrayBuffer();
   const expected = descriptor.width * descriptor.height * 2;
@@ -400,7 +405,13 @@ function updateWalkCamera(dt = 1 / 60, snap = false) {
 }
 
 function updateDriveTelemetry() {
-  if (isEarth()) return; // lunar time/sun telemetry only applies on the Moon
+  if (isEarth()) {
+    // Driving the Earth analog: keep showing conditions at the paired Moon site (its centre).
+    const moon = REGIONS[earthRegion];
+    if (moon) simulation.updateRoverPosition(moon.lat, moon.lon, moonRegionStats?.[earthRegion]?.meanSlope,
+      `Mean slope, Moon site (20 km LOLA)`);
+    return;
+  }
   const { x, z } = rover.position;
   const { descriptor, fine } = viewData;
   const spacing = currentView.spacing;
@@ -497,12 +508,12 @@ function enterWalkMode(spawn = null) {
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
   const earth = isEarth();
-  driveTelemetry.hidden = earth;
+  driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
   const paceButton = $('walk-pace').closest('button');
   paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
   paceButton.querySelector('span').textContent = earth ? 'SPEED' : 'PLAYBACK SPEED';
   $('walk-ground').closest('button').dataset.method = earth ? 'earthGround' : 'ground';
-  if (!earth) simulation.clock.start();
+  simulation.clock.start();
   renderer.domElement.focus({ preventScroll: true });
   resetRover(spawn);
 }
@@ -612,11 +623,20 @@ async function showView(mode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
-    const key = mode === 'earth' ? `earth:${earthRegion}` : mode;
+    const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}` : mode;
     if (!viewData || viewData.key !== key) {
-      const descriptor = mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion)
+      let descriptor = mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion, earthSite)
         : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
-      const data = await readGrid(descriptor);
+      let data;
+      try {
+        data = await readGrid(descriptor);
+      } catch (error) {
+        if (!descriptor.fallback) throw error;
+        console.warn('Earth tile from backend unavailable; using the pre-made top-match tile.', error);
+        descriptor = descriptor.fallback;
+        data = await readGrid(descriptor);
+        earthSite = null; // the HUD should name the tile actually shown
+      }
       const fine = mode === 'crater'
         ? { descriptor: metadata.craterDetail, data: await readGrid(metadata.craterDetail) }
         : null;
@@ -759,7 +779,10 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(walkClock.getDelta(), 0.05);
   if (walkMode) {
     const earth = isEarth();
-    if (earth) updateWalker(dt, dt);
+    if (earth) {
+      if (simulation.clock.running) simulation.clock.advance(dt * 1000); // Moon-site telemetry keeps time
+      updateWalker(dt, dt);
+    }
     else if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
     else updateWalkCamera(dt);
     keyLight.target.position.copy(rover.position);
@@ -800,6 +823,7 @@ if (earthMetadata) {
     onShowEarth: () => showView('earth'),
     onRegion(region) {
       earthRegion = region;
+      earthSite = null; // picker → that region's top match
       if (isEarth()) showView('earth'); else refreshWorldToggle();
     },
     onToggle: toggleWorld,
@@ -809,7 +833,12 @@ if (earthMetadata) {
     earth: isEarth(),
     region: earthRegion,
     moonViewName: moonViewForRegion(earthRegion) === 'crater' ? 'polar crater floor' : 'de Gerlache Rim 2',
+    site: earthSite,
   });
+  mountHideUi();
 }
 
-showView(new URLSearchParams(location.search).get('world') === 'earth' && earthMetadata ? 'earth' : 'overview');
+// From the atlas: ?world=earth opens the Earth analog; &drive=1 puts the rover straight on it.
+showView(pageParams.get('world') === 'earth' && earthMetadata ? 'earth' : 'overview').then(ok => {
+  if (ok && pageParams.get('drive') === '1') $('walk-button').click();
+});

@@ -16,6 +16,7 @@
       "name": "Andes",
       "country": "San Juan, Argentina",
       "near": "Rodeo (83 km)",
+      "demSource": "SRTMGL1",
       "minM": 2496,
       "maxM": 6013
     },
@@ -31,6 +32,7 @@
       "name": "Altiplano",
       "country": "Antofagasta, Chile",
       "near": "San Pedro de Atacama (137 km)",
+      "demSource": "SRTMGL1",
       "minM": 3214,
       "maxM": 6216
     },
@@ -46,6 +48,7 @@
       "name": "Atacama Desert",
       "country": "Tarapac\u00e1, Chile",
       "near": "Pica (22 km)",
+      "demSource": "SRTMGL1",
       "minM": 1840,
       "maxM": 3837
     },
@@ -61,6 +64,7 @@
       "name": "Andes",
       "country": "Arequipa, Peru",
       "near": "Quicacha (29 km)",
+      "demSource": "SRTMGL1",
       "minM": 1394,
       "maxM": 3050
     },
@@ -76,6 +80,7 @@
       "name": "Kunlun Mountains",
       "country": "Qinghai, China",
       "near": "Golmud (117 km)",
+      "demSource": "SRTMGL1",
       "minM": 3564,
       "maxM": 4954
     },
@@ -91,6 +96,7 @@
       "name": "Altiplano",
       "country": "Catamarca, Argentina",
       "near": "Antofagasta de la Sierra (65 km)",
+      "demSource": "SRTMGL1",
       "minM": 3410,
       "maxM": 5784
     },
@@ -106,6 +112,7 @@
       "name": "Atacama Desert",
       "country": "Antofagasta, Chile",
       "near": "Taltal (35 km)",
+      "demSource": "SRTMGL1",
       "minM": 787,
       "maxM": 2096
     }
