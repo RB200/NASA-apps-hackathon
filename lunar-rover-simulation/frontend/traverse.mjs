@@ -110,6 +110,7 @@ export class Traverse {
     const start = this.world === 'earth' ? { x: 0, z: 0 } : this.start;
     const comparison = new Traverse(this.world, start);
     comparison.setTiles({ earth, moon: this.tiles.moon });
+    comparison.environmentClock = this.environmentClock;
     for (let i = 1; i < this.route.length; i++) {
       const point = this.route[i];
       comparison.record(start.x + (point.x - this.start.x), start.z + (point.z - this.start.z));

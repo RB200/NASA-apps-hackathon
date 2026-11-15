@@ -1,4 +1,5 @@
-import { INTERVAL, Traverse, routeStats, profileDifference } from './traverse.mjs?v=overlay-1';
+import { environmentClock, environmentProfile } from './traverse-environment.mjs';
+import { INTERVAL, Traverse, routeStats, profileDifference } from './traverse.mjs?v=environment-1';
 
 const colors = { earth: '#75e2af', moon: '#c1b2ff' };
 const worlds = ['earth', 'moon'];
@@ -6,17 +7,28 @@ const fmt = n => n == null ? '—' : n.toLocaleString(undefined, { maximumFracti
 const metres = n => `${fmt(n)} m`;
 const putText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
 
-function graph(svg, points) {
+const environmentMetrics = {
+  temperature: { label: 'Lunar surface temperature estimate', axis: 'Temperature (°C)', series: ['moon'] },
+  elevation: { label: 'Sun elevation', axis: 'Sun elevation (°)', series: worlds },
+  irradiance: { label: 'Horizontal solar irradiance', axis: 'Irradiance (W/m²)', series: worlds },
+};
+
+function graph(svg, points, metric = null) {
+  const series = metric?.series ?? worlds;
+  const horizontal = metric ? 'Simulated elapsed time (min)' : 'Horizontal distance (m)';
+  const vertical = metric?.axis ?? 'Rel. elevation (m)';
+  svg.setAttribute('aria-label', `${metric?.label ?? 'Relative terrain elevation'} vs. ${horizontal}`);
   const width = 480, height = 150, left = 56, right = 429, top = 12, bottom = 106;
-  let low = 0, high = 0;
-  for (const p of points) {
-    low = Math.min(low, p.earth, p.moon);
-    high = Math.max(high, p.earth, p.moon);
+  let low = metric && points.length ? Infinity : 0;
+  let high = metric && points.length ? -Infinity : 0;
+  for (const point of points) for (const world of series) {
+    low = Math.min(low, point[world]);
+    high = Math.max(high, point[world]);
   }
   const step = 10 ** Math.floor(Math.log10(Math.max(1, high - low)));
   low = Math.floor(low / step) * step;
   high = Math.max(low + step, Math.ceil(high / step) * step);
-  const distance = Math.max(INTERVAL, points.at(-1)?.distance ?? 0);
+  const distance = Math.max(metric ? 1 : INTERVAL, points.at(-1)?.distance ?? 0);
   const x = m => left + m / distance * (right - left);
   const y = m => bottom - (m - low) / (high - low) * (bottom - top);
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -26,11 +38,29 @@ function graph(svg, points) {
   svg.innerHTML = `${labels.join('')}
     <text x="${left}" y="121" text-anchor="middle">0</text>
     <text x="${right}" y="121" text-anchor="middle">${fmt(distance)}</text>
-    <text x="240" y="142" text-anchor="middle">Horizontal distance (m)</text>
-    <text transform="translate(12 95) rotate(-90)">Rel. elevation (m)</text>
-    ${worlds.map(world => points.length < 2 ? `<circle cx="${left}" cy="${y(0)}" r="3" fill="${colors[world]}"/>` :
+    <text x="240" y="142" text-anchor="middle">${horizontal}</text>
+    <text transform="translate(12 59) rotate(-90)" text-anchor="middle">${vertical}</text>
+    ${series.map(world => points.length === 1 ? `<circle cx="${left}" cy="${y(points[0][world])}" r="3" fill="${colors[world]}"/>` :
       `<polyline points="${points.map(p => `${x(p.distance).toFixed(2)},${y(p[world]).toFixed(2)}`).join(' ')}"
         stroke="${colors[world]}" ${world === 'moon' ? 'stroke-dasharray="5 3"' : ''}/>`).join('')}`;
+}
+
+function drawEnvironment(container, test, key) {
+  const metric = environmentMetrics[key];
+  const points = environmentProfile(test).map(point => {
+    const values = { distance: point.minute };
+    for (const world of metric.series) values[world] = point[world][key];
+    return values;
+  });
+  graph(container.querySelector('svg'), points, metric);
+  const note = container.querySelector('.traverse-environment-note');
+  note.hidden = false;
+  const start = new Date(test.environmentClock.start).toISOString().slice(0, 19).replace('T', ' ');
+  const detail = key === 'temperature'
+    ? 'Lunar estimate at the site center. Earth temperature data are unavailable.'
+    : 'Site centers at the same simulated UTC. Sunlight excludes clouds and terrain shadows.';
+  putText(note, `${detail} Start: ${start} UTC. Samples every simulated minute plus the latest point.`);
+  container.querySelector('.traverse-key span').hidden = key === 'temperature';
 }
 
 function localRoute(test, world) {
@@ -143,11 +173,19 @@ function drawMapLabels(ctx, route, finishColor, metresPerPixel) {
   ctx.fillStyle = '#fff'; ctx.fillText('↑ N', size - 45, 23);
 }
 
-export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
+export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock }) {
   const panel = document.getElementById('live-traverse');
   const status = panel.querySelector('p');
   const liveGraph = panel.querySelector('svg');
   const liveChart = document.getElementById('traverse-live-chart');
+  const liveMetric = document.getElementById('traverse-live-metric');
+  const reportMetric = document.getElementById('traverse-report-metric');
+  const reportEnvironment = document.querySelector('.traverse-environment');
+  liveMetric.add(new Option('Terrain elevation by distance', ''));
+  for (const [key, metric] of Object.entries(environmentMetrics)) {
+    liveMetric.add(new Option(metric.label, key));
+    reportMetric.add(new Option(metric.label, key));
+  }
   const ready = document.getElementById('traverse-ready');
   const finish = document.getElementById('traverse-finish');
   const report = document.getElementById('traverse-report');
@@ -159,12 +197,12 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
   const refreshMaps = () => drawMaps(report, shown, zoom.checked, overlay.checked);
 
   const reopen = document.getElementById('traverse-last');
-  let current, last, shown, driving = false, lastPaint = 0, drawnDistance;
+  let current, last, shown, driving = false, lastPaint = 0, drawnDistance, drawnClock;
   const update = (force = false) => {
     if (!force && performance.now() - lastPaint < 200) return;
     lastPaint = performance.now();
     panel.hidden = !driving && !last;
-    finish.disabled = !current?.test.tiles || !current.test.distance;
+    finish.disabled = !current?.test.tiles || !hasResults(current.test);
     finish.hidden = !driving;
     ready.hidden = !last;
     reopen.hidden = !last;
@@ -178,7 +216,15 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
     putText(status, reason || (!test.tiles ? 'Loading paired elevation tiles…' :
       test.incomplete ? `Incomplete · tile edge at ${metres(test.pairedDistance)} · driven ${metres(test.distance)}` :
         `Recording · ${metres(test.distance)} · ${INTERVAL} m stations`));
-    if (panel.open && test.tiles && (force || drawnDistance !== test.pairedDistance)) {
+    if (!panel.open || !test.tiles) return;
+    if (liveMetric.value) {
+      if (force || drawnClock !== test.environmentClock) {
+        drawEnvironment(liveChart, test, liveMetric.value);
+        drawnClock = test.environmentClock;
+      }
+    } else if (force || drawnDistance !== test.pairedDistance) {
+      liveChart.querySelector('.traverse-environment-note').hidden = true;
+      liveChart.querySelector('.traverse-key span').hidden = false;
       graph(liveGraph, test.profile());
       drawnDistance = test.pairedDistance;
     }
@@ -196,6 +242,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
     }
     earthStatus.textContent = 'Try the same recorded route from the center of another Earth terrain.';
     zoom.checked = true;
+    reportMetric.value = liveMetric.value || 'temperature';
     renderReport();
     report.scrollTop = 0;
     report.showModal();
@@ -232,12 +279,14 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
         `At ${metres(diff.closest.distance)}, the starting-relative elevations differ by ${metres(diff.gap(diff.closest))}.` :
         `Beyond the start, the profiles are closest at ${metres(diff.closest.distance)} (a ${metres(diff.gap(diff.closest))} gap) and differ most at ${metres(diff.furthest.distance)} (a ${metres(diff.gap(diff.furthest))} gap).`} ${peak(stats[0], 'Earth')} ${peak(stats[1], 'The Moon')}`;
     refreshMaps();
+    drawEnvironment(reportEnvironment, test, reportMetric.value);
   }
 
+  const hasResults = test => test.distance > 0 || test.environmentClock?.seconds >= 60;
   function complete(open = false) {
     const entry = current;
     current = null;
-    if (entry && !entry.reason && entry.test.distance > 0) {
+    if (entry && !entry.reason && hasResults(entry.test)) {
       entry.ready.then(() => {
         if (entry.test.tiles && (!last || entry.test.sequence > last.sequence)) {
           last = entry.test;
@@ -251,6 +300,8 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
   let sequence = 0;
   finish.addEventListener('click', () => { complete(true); refocus(); });
   reopen.addEventListener('click', showReport);
+  liveMetric.addEventListener('change', () => update(true));
+  reportMetric.addEventListener('change', () => drawEnvironment(reportEnvironment, shown, reportMetric.value));
   zoom.addEventListener('change', refreshMaps);
   overlay.addEventListener('change', refreshMaps);
   earthPicker.addEventListener('change', async () => {
@@ -284,6 +335,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
       driving = true;
       const test = new Traverse(world, start);
       test.sequence = ++sequence;
+      test.environmentClock = environmentClock(null, readClock());
       const entry = { test, reason };
       current = entry;
       if (!reason) entry.ready = loadPair().then(tiles => test.setTiles(tiles)).catch(error => {
@@ -295,7 +347,15 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
       update(true);
     },
     record(x, z) { if (current && !current.reason) current.test.record(x, z); },
-    tick: update,
+    tick() {
+      if (current && !current.reason) {
+        const test = current.test;
+        const previous = test.environmentClock;
+        const next = environmentClock(previous, readClock());
+        if (next.start !== previous.start || next.seconds !== previous.seconds) test.environmentClock = next;
+      }
+      update();
+    },
     leave() {
       driving = false;
       panel.open = false;
