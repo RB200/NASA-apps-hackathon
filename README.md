@@ -38,4 +38,6 @@ See the [backend notes](backend/README.md) for data formats and scoring, the [da
 
 We used OpenAI Codex, Anthropic Claude, and GitHub Copilot as coding assistants. AI assistance covered implementation, debugging, and testing across the lunar atlas, terrain viewer, rover simulator, analog scoring, and data-processing scripts. Codex also helped draft and edit the project documentation.
 
+GPT wrote the program that combined NASA images of the lunar south pole into the atlas background, a mosaic with more consistent lighting.
+
 We adapted NASA’s Space Exploration Vehicle model so its wheels could rotate and move with the suspension during driving. Data and visual asset credits are listed in [SOURCES.md](SOURCES.md).

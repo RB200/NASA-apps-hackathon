@@ -9,7 +9,7 @@
 | [LOLA LDEM_80S_20M](https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_20m.lbl) | 20 m source for the nine local lunar rover tiles. |
 | [LOLA LDEM_875S_5M](https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_875s_5m.lbl) | Source for the 5 m de Gerlache and crater detail patches and the coarser crater and polar overview views. |
 | [NASA Goddard Lunar Polar Illumination](https://pgda.gsfc.nasa.gov/products/69) | The atlas summarizes the LOLA 120 m average visibility product, `AVGVISIB_75S_120M`, over each region. |
-| [Supplied south-pole image](source-assets/atlas/South_Pole.png) | The atlas uses a resized, registered version of this image. The original publisher is unverified. |
+| [Lunar south-pole mosaic compiled from NASA imagery](source-assets/atlas/South_Pole.png) | GPT wrote a program that combined a series of NASA images of the lunar south pole into a single mosaic with more consistent lighting. The atlas uses a resized, geographically registered copy. |
 
 ## Earth atlas and terrain
 
