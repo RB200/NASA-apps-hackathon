@@ -16,6 +16,7 @@ API docs: http://localhost:8000/docs. Tests: `backend/.venv/bin/python -I backen
 ## Data files — drop real data here
 
 Put these two files in `backend/data/`. Until both exist, the server uses `backend/data/sample/` (made-up numbers) and every response says `"sample": true`.
+Both files must be encoded as UTF-8.
 
 ### `earth_patches.csv` (from the Earth Engine export)
 One row per 20 × 20 km patch, DEM resampled to ~100 m/pixel.

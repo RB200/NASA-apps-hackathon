@@ -4,7 +4,7 @@ Find Earth locations that match potential Artemis III lunar south-pole base site
 
 ## Try the de Gerlache scenario
 
-Start the app using the quick start below, then select **Try the de Gerlache scenario** on the opening screen. The app selects de Gerlache Rim 2 and searches for Earth terrain, prioritizing steepest areas followed by roughness. Choose a result to compare measurements, change priorities and search again, or open the rover terrain viewer from the lunar telemetry panel.
+Start the app using the quick start below, then select **Try the de Gerlache scenario** on the opening screen. The app selects de Gerlache Rim 2 and searches for Earth terrain, prioritizing steepest areas followed by roughness. Choose a result to compare measurements or open the rover terrain viewer.
 
 With the app running, open [the demo directly](http://localhost:5173/?demo=de-gerlache). If the backend is unavailable, the app labels its placeholder results as sample data; **Enter rover** still opens using the region's preset Earth terrain.
 
@@ -36,11 +36,10 @@ With the app running, open [the demo directly](http://localhost:5173/?demo=de-ge
 This app helps find Earth locations that resemble candidate sites for the **Artemis III lunar base** (planned for the Moon's south pole).
 
 **How it works:**
-1. View the 3D moon globe showing 9 candidate regions near the south pole
-2. Select a lunar region by clicking the colored boxes
-3. Choose terrain features you care about (roughness, steep areas, etc.)
-4. Click "GO" to search Earth for matching locations
-5. Compare results with detailed side-by-side analysis
+1. View the flat south-pole map showing 9 candidate regions. The browser image is a resized copy of `South_Pole.png`, registered against the previous polar map; region positions are approximate.
+2. Select a lunar region by clicking its marker or colored box
+3. Review its Earth terrain matches and select one for a detailed comparison
+4. Open the rover simulation at the selected Earth location
 
 **Why it matters:** Understanding Earth analogs helps prepare for actual lunar exploration and base construction.
 
@@ -48,11 +47,10 @@ This app helps find Earth locations that resemble candidate sites for the **Arte
 
 ## ✅ What You'll See When It Works
 
-- ✓ Moon globe loads with 9 colored regions visible
+- ✓ South-pole map loads with 9 colored regions visible
 - ✓ Browser shows app at `http://localhost:5173`
 - ✓ No errors in browser console (press F12 to check)
-- ✓ Can zoom and rotate moon smoothly without spinning
-- ✓ Can view both north and south poles continuously
+- ✓ Can zoom and pan the south-pole map
 
 ---
 
@@ -61,15 +59,10 @@ This app helps find Earth locations that resemble candidate sites for the **Arte
 | Action | Control |
 |--------|---------|
 | **Zoom** | Scroll mouse wheel |
-| **Rotate** | Left-click and drag |
-| **Pan** | Middle-click and drag |
+| **Pan** | Left-click and drag |
 | **Select Region** | Left-click on colored boxes |
 
-**Key improvements:**
-- ✅ Zoom no longer causes unwanted spinning
-- ✅ Can continuously rotate through both poles without getting stuck
-
----
+Zooming out and panning are limited to the edges of the south-pole image.
 
 ## 📍 Important URLs
 
@@ -152,21 +145,6 @@ Remove-Item -Recurse -Force backend\.venv
 # Let START.bat recreate it
 ```
 
-### Moon view still spinning when zooming
-- Clear browser cache (**Ctrl+Shift+Delete**)
-- Refresh page (**Ctrl+R**)
-- Make sure `frontend/main.js` lines 64-131 contain the camera fixes (preserve angles during zoom)
-
-### Can't see both poles when rotating
-- This was fixed in the latest code
-- If still having issues, make sure `frontend/main.js` has these lines:
-  ```javascript
-  controls.minPolarAngle = 0;      // Allow north pole view
-  controls.maxPolarAngle = Math.PI; // Allow south pole view
-  ```
-
----
-
 ## 📁 Project Structure
 
 ```
@@ -178,7 +156,7 @@ NASA-apps-hackathon/
 │
 ├── frontend/
 │   ├── index.html            ← Main web page
-│   ├── main.js               ← App logic + camera controls
+│   ├── main.js               ← App logic + map controls
 │   ├── regions.js            ← Lunar regions data
 │   ├── style.css             ← Styling
 │   └── [other assets]
@@ -200,45 +178,24 @@ NASA-apps-hackathon/
 
 2. **Explore the moon:** 
    - Zoom with scroll wheel
-   - Rotate by dragging left mouse button
+   - Pan by dragging left mouse button
    - You should see 9 colored boxes on the lunar south pole
 
 3. **Select a region:**
    - Click any colored box to select that region
    - You'll see region details appear
 
-4. **Choose terrain features:**
-   - Check boxes for features you care about (e.g., "steep slopes", "rough terrain")
-   - These are the characteristics used to find Earth matches
-
-5. **Search Earth:**
-   - Click "GO" or "SEARCH"
-   - Backend will find matching Earth locations
-   - Results show locations with similar terrain
-
-6. **Compare results:**
+4. **Compare results:**
    - Click any result to see detailed comparison
-   - View moon and Earth images side-by-side
+   - Open the rover simulation at the selected Earth location
 
 ---
 
 ## 🛠️ Technical Details
 
-### What the Camera Fixes Do
-
-**Problem 1: Zoom-induced spinning**
-- When scrolling to zoom, the view would rotate unexpectedly
-- **Fixed:** Capturing camera angles before zoom and preserving them during the operation
-
-**Problem 2: South pole barrier**
-- Dragging past the south pole would get stuck
-- **Fixed:** Setting polar angle limits to allow full 0–π rotation range
-
-**Camera Implementation:** See `frontend/main.js` lines 64-131 for the technical implementation of these fixes.
-
 ### Technology Stack
 
-- **Frontend:** HTML5, JavaScript, globe.gl (Three.js wrapper)
+- **Frontend:** HTML5, JavaScript, Leaflet
 - **Backend:** Python, FastAPI, Uvicorn
 - **Data:** CSV/JSON (NASA Earth and Moon data)
 
@@ -251,16 +208,6 @@ To stop the application:
 2. Or press **Ctrl+C** in each window
 
 To restart: Just double-click `START.bat` again.
-
----
-
-## 📖 Additional Resources
-
-For a detailed explanation of the camera control implementation, see `frontend/main.js` lines 64-131, which includes:
-
-- **Zoom preservation:** Capturing and restoring spherical angles during mouse wheel zoom
-- **Pole wrapping:** Setting polar angle limits (0 to π) for continuous rotation
-- **Smooth movement:** Intuitive mouse controls for orbit, pan, and zoom
 
 ---
 

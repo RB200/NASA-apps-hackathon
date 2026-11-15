@@ -1,5 +1,6 @@
 """Quick checks: backend/.venv/bin/python -I backend/test_app.py"""
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -8,6 +9,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app as backend  # noqa: E402
 
 c = TestClient(backend.app)
+
+with tempfile.TemporaryDirectory() as directory:
+    earth = Path(directory) / "earth.csv"
+    earth.write_text("name,country\nM\u0101una,Per\u00fa\n", encoding="utf-8")
+    assert backend.read_rows(earth)[0] == {"name": "M\u0101una", "country": "Per\u00fa"}
+    moon = Path(directory) / "moon.json"
+    moon.write_text('{"site": {"name": "M\u0101una"}}', encoding="utf-8")
+    assert backend.load_moon(moon)["site"]["name"] == "M\u0101una"
 
 h = c.get("/health").json()
 assert h["ok"] and len(h["moonRegions"]) == 9, h
@@ -39,7 +48,7 @@ assert abs(backend.combine(np.array([[70, 0, 0, 0.0]]), np.array([1, 0, 0, 0.0])
 
 # priority matters: plateau region with landing-style priorities should prefer flat sites
 flat = c.get("/match", params={"region": "mons-mouton", "constraints": "p90Slope,roughness", "n": 3}).json()
-print("haworth:", [(x["name"], x["match"]) for x in m])
-print("mons-mouton:", [(x["name"], x["match"]) for x in flat["matches"]])
+print("haworth:", ascii([(x["name"], x["match"]) for x in m]))
+print("mons-mouton:", ascii([(x["name"], x["match"]) for x in flat["matches"]]))
 print("eligible:", r["eligible"], "with snow:", snow["eligible"], "sample:", r["sample"])
 print("OK")

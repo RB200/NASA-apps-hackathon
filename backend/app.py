@@ -45,7 +45,7 @@ def _float(v: str, default: float = float("nan")) -> float:
 
 
 def read_rows(path: Path) -> list[dict]:
-    with open(path, newline="") as f:
+    with open(path, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         raise RuntimeError(f"{path} is empty")
@@ -71,7 +71,7 @@ def load_earth(path: Path, rows: list[dict]) -> dict:
 
 
 def load_moon(path: Path) -> dict[str, dict[str, float]]:
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     return {k: v for k, v in raw.items() if not k.startswith("_")}
 
 

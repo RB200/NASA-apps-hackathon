@@ -14,23 +14,43 @@ if (location.port === '5173' && /^\/(?:index\.html)?$/.test(location.pathname)
     && ['localhost', '127.0.0.1'].includes(location.hostname)) roverPage.port = '5175';
 
 // ---------- 2D south-pole map ----------
-// Basemap (assets/lunar-south-pole.webp): 1500 × 1500 px, south-polar stereographic, pole at the
-// centre, 0° longitude up, ~608 km across: the same framing as the LOLA 80°S DEM (checked against
-// Shackleton and two other craters). Regions are placed with LOLA's projection, so they line up.
-const MAP_PX = 1500, MAP_KM = 608, PX_PER_KM = MAP_PX / MAP_KM;
+// The resized South_Pole.png is registered against the previous 608 km LOLA polar map.
+// The fit includes a small rotation and uses Leaflet's upward-positive image y axis.
+const MAP_WIDTH = 4800, MAP_HEIGHT = 1620;
+const POLE_X = 2399.199, POLE_Y = 810.571, PX_PER_KM = 1.583685, ROTATION_PX_PER_KM = 0.001132;
 const DEG = Math.PI / 180;
 function polarKm(lat, lon) { // km east / north of the pole, LOLA polar stereographic
   const rho = 2 * MOON_RADIUS_KM * Math.tan((90 + lat) / 2 * DEG);
   return [rho * Math.sin(lon * DEG), rho * Math.cos(lon * DEG)];
 }
 // Leaflet's simple CRS: [y up from the image bottom, x right], in image pixels.
-const toLatLng = (xKm, yKm) => L.latLng(MAP_PX / 2 + yKm * PX_PER_KM, MAP_PX / 2 + xKm * PX_PER_KM);
+const toLatLng = (xKm, yKm) => L.latLng(
+  POLE_Y + yKm * PX_PER_KM + xKm * ROTATION_PX_PER_KM,
+  POLE_X + xKm * PX_PER_KM - yKm * ROTATION_PX_PER_KM
+);
 
-const FULL = L.latLngBounds([0, 0], [MAP_PX, MAP_PX]);
-const moonMap = L.map('globe', { crs: L.CRS.Simple, minZoom: -1.5, maxZoom: 3, zoomSnap: 0.25,
-  attributionControl: false, zoomControl: false, maxBounds: FULL.pad(0.15) });
+const FULL = L.latLngBounds([0, 0], [MAP_HEIGHT, MAP_WIDTH]);
+const moonMap = L.map('globe', { crs: L.CRS.Simple, maxZoom: 3.75, zoomSnap: 0.25,
+  attributionControl: false, zoomControl: false, maxBounds: FULL, maxBoundsViscosity: 1 });
+function updateMapZoomLimit() {
+  const size = moonMap.getSize();
+  const zoom = Math.ceil(Math.log2(Math.max(size.x / MAP_WIDTH, size.y / MAP_HEIGHT)) / moonMap.options.zoomSnap)
+    * moonMap.options.zoomSnap;
+  moonMap.setMaxZoom(Math.max(3.75, zoom));
+  moonMap.setMinZoom(zoom);
+}
+updateMapZoomLimit();
+moonMap.on('zoomend', () => {
+  // Leaflet rounds image and pan positions separately; keep a two-screen-pixel inset.
+  const inset = 2 / Math.pow(2, moonMap.getZoom());
+  moonMap.setMaxBounds(L.latLngBounds([inset, inset], [MAP_HEIGHT - inset, MAP_WIDTH - inset]));
+});
+moonMap.on('resize', () => {
+  updateMapZoomLimit();
+  moonMap.panInsideBounds(moonMap.options.maxBounds, { animate: false });
+});
 L.control.zoom({ position: 'bottomleft' }).addTo(moonMap);
-L.imageOverlay('assets/lunar-south-pole.webp', FULL).addTo(moonMap);
+L.imageOverlay('assets/south-pole-map.webp', FULL).addTo(moonMap);
 
 let selected = null;
 const boxes = REGIONS.map(r => {
