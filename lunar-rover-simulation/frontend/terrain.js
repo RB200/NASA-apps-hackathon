@@ -508,6 +508,7 @@ function enterWalkMode(spawn = null) {
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
   const earth = isEarth();
+  simulation.setWorld(earth ? 'earth' : 'moon');
   driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
   const paceButton = $('walk-pace').closest('button');
   paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
@@ -750,7 +751,7 @@ const movementKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrow
 addEventListener('keydown', event => {
   if (!walkMode) return;
   const key = event.key.toLowerCase();
-  if (document.querySelector('.lunar-date-dialog[open], .lunar-method-dialog[open]')) return;
+  if (document.querySelector('.lunar-method-dialog[open]')) return;
   if (key === 'escape') { exitWalkMode(); return; }
   if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, summary')) return;
   if (key === 't' && !event.repeat) { toggleWorld(); return; }
