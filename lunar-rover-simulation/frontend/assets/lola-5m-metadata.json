@@ -1,0 +1,53 @@
+{
+  "columns": 30336,
+  "rows": 30336,
+  "pixelSizeM": 5.0,
+  "heightScaleM": 0.5,
+  "referenceRadiusM": 1737400.0,
+  "lineProjectionOffset": 15167.5,
+  "sampleProjectionOffset": 15167.5,
+  "overview": {
+    "file": "lunar-south-pole-overview-i16.bin",
+    "width": 948,
+    "height": 948,
+    "stridePixels": 32
+  },
+  "detail": {
+    "file": "de-gerlache-detail-5m-i16.bin",
+    "width": 512,
+    "height": 512,
+    "stridePixels": 1,
+    "firstRow": 19628,
+    "firstColumn": 5065,
+    "centerLatitude": -88.2,
+    "centerLongitude": -64.4
+  },
+  "crater": {
+    "file": "polar-crater-overview-i16.bin",
+    "width": 1024,
+    "height": 1024,
+    "stridePixels": 4,
+    "firstRow": 4996,
+    "firstColumn": 21890,
+    "centerLatitude": -88.029,
+    "centerLongitude": 132.8
+  },
+  "craterDetail": {
+    "file": "polar-crater-detail-5m-i16.bin",
+    "width": 512,
+    "height": 512,
+    "stridePixels": 1,
+    "firstRow": 7788,
+    "firstColumn": 24682,
+    "centerLatitude": -88.00639196389591,
+    "centerLongitude": 126.08848970435609,
+    "offsetX": 5000.0,
+    "offsetZ": -5000.0
+  },
+  "craterSpawn": {
+    "offsetX": 5000.0,
+    "offsetZ": -5000.0,
+    "centerLatitude": -88.00639196389591,
+    "centerLongitude": 126.08848970435609
+  }
+}
