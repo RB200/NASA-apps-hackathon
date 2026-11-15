@@ -25,6 +25,7 @@
         <button class="icon close" data-close aria-label="Close">×</button>
       </div>
       <p id="r-meta" class="muted"></p>
+      <div id="r-sun" class="sun" hidden></div>
       <p class="label">Best Earth matches</p>
       <p id="status" class="muted"></p>
       <ol id="results"></ol>
@@ -54,7 +55,7 @@
   </div>
 
   <footer id="credits">
-    South-pole map image: supplied South_Pole.png (source to be credited) · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA Artemis III candidate map
+    South-pole map image: supplied South_Pole.png (source to be credited) · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Moon sunlight: NASA LRO LOLA average solar illumination (Mazarico et al. 2011, <a href="https://pgda.gsfc.nasa.gov/products/69" target="_blank" rel="noopener">PGDA</a>) · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA Artemis III candidate map
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

@@ -1,5 +1,6 @@
 import { REGIONS, CONSTRAINTS, MOON_RADIUS_KM } from './regions.js';
 import { sampleMoon, SAMPLE_EARTH } from './sample.js';
+import { SUNLIGHT } from './sunlight.js';
 
 const API_BASE = 'http://localhost:8000'; // FastAPI backend (build step 4)
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
@@ -109,7 +110,20 @@ function select(r) {
   $('out').hidden = false;
   $('r-name').textContent = r.name;
   $('r-meta').textContent = `Moon · ${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
+  showSunlight(r);
   search();
+}
+
+// Sunlight: % of time sunlit (NASA LOLA average illumination over an 18.6-year cycle), over the region's box.
+function showSunlight(r) {
+  const s = SUNLIGHT[r.id], el = $('r-sun');
+  el.hidden = !s;
+  if (!s) return;
+  const pct = v => `${Math.round(v * 100)}%`;
+  el.innerHTML = `<div class="sun-head"><span>☀️ Sunlight</span><b>${pct(s.mean)}</b><span class="muted">of the time, on average</span></div>
+    <div class="sun-bar" aria-hidden="true"><i style="width:${s.mean * 100}%"></i><em style="left:${s.best * 100}%"></em></div>
+    <p class="muted sun-note">Sunniest spot ${pct(s.best)} · ${s.dark < 0.005 ? 'almost no' : pct(s.dark) + ' of the area in'} near-permanent shadow</p>`;
+  el.title = 'Share of time any part of the Sun is above the local horizon, including terrain shadows. NASA LRO LOLA average solar illumination, 120 m/pixel, averaged over 18.6 years (Mazarico et al. 2011).';
 }
 
 document.querySelector('[data-close]').onclick = () => {
