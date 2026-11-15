@@ -160,7 +160,10 @@ const colorLut = Array.from({ length: 256 }, (_, i) => elevationColor(i / 255));
 
 async function readGrid(descriptor) {
   const response = await fetch(descriptor.url ?? `./assets/${descriptor.file}?v=${assetVersion}`);
-  if (!response.ok) throw new Error(`Could not load ${descriptor.file}`);
+  if (!response.ok) {
+    const detail = descriptor.url ? await response.json().catch(() => null) : null;
+    throw new Error(detail?.detail || `Server returned HTTP ${response.status}`);
+  }
   const buffer = await response.arrayBuffer();
   const expected = descriptor.width * descriptor.height * 2;
   if (buffer.byteLength !== expected) throw new Error('Terrain tile size does not match its metadata');
@@ -729,7 +732,9 @@ function beginTraverse(x, z) {
   });
 }
 
+let viewRequest = 0;
 async function showView(mode) {
+  const request = ++viewRequest;
   viewMode = mode;
   $('loading').classList.add('visible');
   $('error-message').hidden = true;
@@ -746,20 +751,12 @@ async function showView(mode) {
         : mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion, earthSite)
         : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
       if (!descriptorForMode) throw new Error(`LOLA terrain tile is unavailable for ${earthRegion}`);
-      let descriptor = descriptorForMode;
-      let data;
-      try {
-        data = await readGrid(descriptor);
-      } catch (error) {
-        if (!descriptor.fallback) throw error;
-        console.warn('Earth tile from backend unavailable; using the pre-made top-match tile.', error);
-        descriptor = descriptor.fallback;
-        data = await readGrid(descriptor);
-        earthSite = null; // the HUD should name the tile actually shown
-      }
+      const descriptor = descriptorForMode;
+      const data = await readGrid(descriptor);
       const fine = mode === 'crater'
         ? { descriptor: metadata.craterDetail, data: await readGrid(metadata.craterDetail) }
         : null;
+      if (request !== viewRequest) return false;
       viewData = { mode, key, descriptor, data, fine };
     }
     if (mode !== 'earth') lastMoonView = mode;
@@ -791,12 +788,15 @@ async function showView(mode) {
     frameView(view);
     return true;
   } catch (error) {
+    if (request !== viewRequest) return false;
     console.error(error);
-    $('error-message').textContent = 'The elevation tile could not be loaded. Serve this folder over HTTP and check that the assets are present.';
+    $('error-message').textContent = mode === 'earth' && earthSite
+      ? `Could not load elevation for ${earthSite.name}. Make sure the backend is running and elevation data is available for this location. ${error.message}`
+      : 'The elevation tile could not be loaded. Serve this folder over HTTP and check that the assets are present.';
     $('error-message').hidden = false;
     return false;
   } finally {
-    $('loading').classList.remove('visible');
+    if (request === viewRequest) $('loading').classList.remove('visible');
   }
 }
 
@@ -961,11 +961,13 @@ if (earthMetadata) {
     region: earthRegion,
     onShowEarth: () => showView('earth'),
     onShowMoon: () => showView(moonViewForRegion(earthRegion)),
-    onRegion(region) {
+    async onRegion(region) {
+      const driving = walkMode;
+      const mode = isEarth() ? 'earth' : moonViewForRegion(region);
+      if (driving) exitWalkMode();
       earthRegion = region;
       earthSite = null; // picker → that region's top match
-      if (isEarth()) showView('earth');
-      else showView(moonViewForRegion(region));
+      if (await showView(mode) && driving) enterWalkMode();
     },
     onToggle: toggleWorld,
   });

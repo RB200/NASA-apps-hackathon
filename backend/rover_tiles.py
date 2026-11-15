@@ -11,8 +11,10 @@ Built tiles are cached in data_prep/cache/rover_tiles/.
 from __future__ import annotations
 
 import math
+import tempfile
 import threading
 import zipfile
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +25,7 @@ SIZE = 512
 SPACING_M = 30.0
 M_PER_DEG = 111_320.0
 LP = "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected"
+COPERNICUS = "https://copernicus-dem-30m.s3.amazonaws.com"
 
 _tiles: dict[str, tuple[np.ndarray, int, str]] = {}
 _lock = threading.Lock()
@@ -68,6 +71,26 @@ def _read_tif(path: Path) -> np.ndarray:
     return z
 
 
+def _copernicus(lat0: int, lon0: int) -> Path:
+    lat = f"{'N' if lat0 >= 0 else 'S'}{abs(lat0):02d}"
+    lon = f"{'E' if lon0 >= 0 else 'W'}{abs(lon0):03d}"
+    name = f"Copernicus_DSM_COG_10_{lat}_00_{lon}_00_DEM"
+    folder = CACHE / "copernicus"
+    path = folder / f"{name}.tif"
+    if not path.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=folder, suffix='.part', delete=False) as file:
+            temporary = Path(file.name)
+        try:
+            with urllib.request.urlopen(f"{COPERNICUS}/{name}/{name}.tif", timeout=90) as response, temporary.open('wb') as target:
+                import shutil
+                shutil.copyfileobj(response, target)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return path
+
+
 def _load(lat0: int, lon0: int, allow_download: bool) -> tuple[np.ndarray, int, str]:
     """(grid with row 0 at lat0+1, samples per degree, source name) for one 1° tile."""
     t = tile_name(lat0, lon0)
@@ -85,6 +108,14 @@ def _load(lat0: int, lon0: int, allow_download: bool) -> tuple[np.ndarray, int, 
         return _read_tif(aster), 3600, "ASTGTM"
     if srtm3.exists():
         return _read_hgt_zip(srtm3, 1200), 1200, "SRTMGL3"
+    if allow_download:
+        try:
+            z = _read_tif(_copernicus(lat0, lon0))
+            if z.shape != (3600, 3600):
+                raise ValueError(f"unexpected elevation tile dimensions: {z.shape}")
+            return np.pad(z, ((0, 1), (0, 1)), mode="edge"), 3600, "Copernicus GLO-30"
+        except Exception as error:
+            raise FileNotFoundError(f"could not obtain elevation data for tile {t}: {error}") from error
     raise FileNotFoundError(f"no elevation data for tile {t}")
 
 

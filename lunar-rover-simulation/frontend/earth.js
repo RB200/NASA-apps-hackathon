@@ -91,7 +91,6 @@ export function earthDescriptor(md, region, chosen = null) {
     url: `${API_BASE}/rover-tile?lat=${chosen.lat}&lon=${chosen.lon}`,
     centerLatitude: chosen.lat, centerLongitude: chosen.lon,
     name: chosen.name, country: chosen.country, cc: chosen.cc, match: chosen.match ?? entry.match,
-    fallback: { ...top, fallbackNote: true },   // backend offline → region's pre-made tile
   };
 }
 
