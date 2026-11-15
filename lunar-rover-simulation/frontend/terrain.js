@@ -1,5 +1,5 @@
-import { mountTraverse } from './traverse-ui.js?v=overlay-1';
-import { gridTriangle, traverseTile } from './traverse.mjs?v=overlay-1';
+import { mountTraverse } from './traverse-ui.js?v=environment-1';
+import { gridTriangle, traverseTile } from './traverse.mjs?v=environment-1';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
@@ -10,6 +10,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
 const traverse = mountTraverse({
+  readClock: () => simulation.clock.read(),
   earthSites: () => Object.entries(earthMetadata?.sites ?? {}),
   async loadEarthSite(id) {
     const site = earthMetadata.sites[id];
@@ -884,7 +885,7 @@ addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   if (document.querySelector('.lunar-method-dialog[open]')) return;
   if (key === 'escape') { exitWalkMode(); return; }
-  if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, summary')) return;
+  if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, select, summary')) return;
   if (key === 't' && !event.repeat) { toggleWorld(); return; }
   if (key === 'r' && !event.repeat) simulation.reset({ resume: simulation.clock.read().running });
   if (movementKeys.has(key)) { walkKeys.add(key); event.preventDefault(); }

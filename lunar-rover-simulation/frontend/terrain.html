@@ -7,7 +7,7 @@
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
   <link rel="stylesheet" href="terrain.css" />
   <link rel="stylesheet" href="earth.css" />
-  <link rel="stylesheet" href="traverse.css?v=overlay-1" />
+  <link rel="stylesheet" href="traverse.css?v=environment-1" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
     {
@@ -96,8 +96,10 @@
       <div class="traverse-live-content">
         <p></p>
         <div id="traverse-live-chart" hidden>
+          <label>Live graph <select id="traverse-live-metric"></select></label>
           <svg class="traverse-chart" role="img" aria-label="Live Earth and Moon elevation relative to each route start, plotted against distance"></svg>
           <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+          <p class="traverse-environment-note" hidden></p>
         </div>
         <div class="traverse-actions">
           <button type="button" id="traverse-finish" disabled>Finish test</button>
@@ -144,11 +146,18 @@
       </table>
       <p>Elevations come from the original DEMs at 30 m along-route intervals, plus the final point if between intervals. Slopes are angles between samples; the average is weighted by segment length. The different DEM grid sizes limit the detail each profile can show.</p>
       <p>These measurements apply to this traverse and are separate from the atlas’s 20 km regional similarity measurements.</p>
+      <section class="traverse-environment">
+        <h3>Environment over time</h3>
+        <label>Environment graph <select id="traverse-report-metric"></select></label>
+        <svg class="traverse-chart" role="img"></svg>
+        <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+        <p class="traverse-environment-note"></p>
+      </section>
       <h3>What the profiles show</h3>
       <p class="traverse-interpretation"></p>
     </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=traverse-overlay-1"></script>
+  <script type="module" src="terrain.js?v=traverse-environment-1"></script>
 </body>
 </html>
