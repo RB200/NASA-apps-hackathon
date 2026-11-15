@@ -107,9 +107,9 @@ button.primary:disabled { opacity: .4; cursor: default; }
 #d-map { height: 220px; border-radius: 12px; overflow: hidden; margin: 4px 0 12px; background: #222; }
 #d-score .big { font-size: 26px; font-weight: 700; color: var(--accent); margin-right: 4px; }
 #d-mission { margin: 0; }
-#d-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-#d-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 4px; }
-#d-table td { padding: 6px 4px; border-top: 1px solid var(--line); }
+#d-table, #d-reachability table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#d-table th, #d-reachability th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 4px; }
+#d-table td, #d-reachability td { padding: 6px 4px; border-top: 1px solid var(--line); }
 #d-table tr.pri td:first-child { font-weight: 600; }
 .bar { display: block; width: 64px; height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 .bar i { display: block; height: 100%; }

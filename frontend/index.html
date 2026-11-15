@@ -45,6 +45,11 @@
       <p id="d-mission"></p>
       <h3>Terrain comparison</h3>
       <table id="d-table"></table>
+      <section id="d-reachability" hidden>
+        <h3>Reachable terrain from the patch center</h3>
+        <table aria-label="Reachable terrain by slope limit"></table>
+        <p>Elevation estimate on a 30 m grid over a 15.36 km square.</p>
+      </section>
       <div class="pc">
         <div><h3>Pros</h3><ul id="d-pros"></ul></div>
         <div><h3>Cons</h3><ul id="d-cons"></ul></div>
@@ -59,6 +64,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="main.js?v=south-pole-map-2"></script>
+  <script type="module" src="main.js?v=reachability-2"></script>
 </body>
 </html>

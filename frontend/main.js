@@ -136,23 +136,52 @@ document.querySelector('[data-close]').onclick = () => {
 
 // ---------- Matching ----------
 let lastResult = null;
+let searchRequest = 0;
+let reachabilityData;
+
+const reachabilityKey = match => `${match.lat.toFixed(4)},${match.lon.toFixed(4)}`;
+function loadReachability() {
+  return reachabilityData ??= fetch('assets/reachability.json').then(response =>
+    response.ok ? response.json() : null).catch(() => null);
+}
+
+function scoreReachability(result, region, data) {
+  const moon = data?.moon[region];
+  if (!moon?.length || !result.matches.length ||
+      !result.matches.every(match => data.earth[reachabilityKey(match)]?.length === moon.length)) return;
+  for (const match of result.matches) {
+    const earth = data.earth[reachabilityKey(match)];
+    const gap = moon.reduce((sum, value, i) => sum + Math.abs(value - earth[i]), 0) / moon.length;
+    match.terrainScore = match.match;
+    match.reachabilityScore = 100 - gap;
+    match.match = 0.8 * match.terrainScore + 0.2 * match.reachabilityScore;
+  }
+  result.matches.sort((a, b) => b.match - a.match);
+  result.includesReachability = true;
+}
 
 async function search() {
   if (!selected) return;
+  const region = selected.id;
+  const request = ++searchRequest;
+  let result;
   $('out').hidden = false;
   showList();
   $('status').textContent = 'Searching…';
   $('results').innerHTML = '';
   try {
-    const qs = new URLSearchParams({ region: selected.id, constraints: priorities().join(','), n: 5 });
+    const qs = new URLSearchParams({ region, constraints: priorities().join(','), n: 5 });
     const res = await fetch(`${API_BASE}/match?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    lastResult = await res.json();
-    lastResult.sample ??= false;
-    lastResult.source = 'backend';
+    result = await res.json();
+    result.sample ??= false;
+    result.source = 'backend';
+    if (!result.sample) scoreReachability(result, region, await loadReachability());
   } catch {
-    lastResult = sampleMatch(selected.id, weights(), 5);
+    result = sampleMatch(region, weights(), 5);
   }
+  if (request !== searchRequest || selected?.id !== region) return;
+  lastResult = result;
   renderResults();
 }
 
@@ -196,7 +225,7 @@ function renderResults() {
     ? `<span class="tag">Sample data</span> Backend not running, showing placeholder numbers.`
     : r.sample
       ? `<span class="tag">Sample data</span> Placeholder ${(r.sampleParts ?? ['earth', 'moon']).map(p => p === 'earth' ? 'Earth' : 'Moon').join(' + ')} numbers.`
-      : `${r.matches.length} best matches for ${selected.name}`;
+      : `${r.matches.length} matches for ${selected.name}${r.includesReachability ? ' · includes reachability' : ''}`;
   if (!r.matches.length) $('status').textContent = 'No bare-ground Earth terrain matches this region.';
   $('results').innerHTML = r.matches.map((m, i) => `
     <li><button class="result" data-i="${i}">
@@ -229,14 +258,34 @@ function missionFit(f) {
   return ['Rover traversal', 'Moderate slopes and roughness, good for driving and EVA route practice.'];
 }
 
+async function showReachability(region, match) {
+  const panel = $('d-reachability');
+  const location = reachabilityKey(match);
+  const selection = `${region}:${location}`;
+  panel.dataset.selection = selection;
+  panel.hidden = true;
+  const data = await loadReachability();
+  const moon = data?.moon[region];
+  const earth = data?.earth[location];
+  if (!moon || !earth || panel.dataset.selection !== selection) return;
+  const percent = value => value === 0 ? '&lt;0.01%' : `${value.toFixed(2)}%`;
+  panel.querySelector('table').innerHTML = '<tr><th>Slope limit</th><th>Moon</th><th>Earth</th></tr>' +
+    data.slopeLimits.map((limit, i) =>
+      `<tr><th scope="row">${limit}°</th><td>${percent(moon[i])}</td><td>${percent(earth[i])}</td></tr>`
+    ).join('');
+  panel.hidden = false;
+}
+
 function showDetail(m) {
+  showReachability(selected.id, m);
   $('list-view').hidden = true;
   $('detail-view').hidden = false;
   $('d-name').textContent = `${flag(m.cc)} ${m.name}`.trim();
   $('d-meta').textContent = `${m.country ? m.country + ' · ' : ''}${m.near ? 'near ' + m.near + ' · ' : ''}${m.lat.toFixed(2)}°, ${m.lon.toFixed(2)}° · 20 × 20 km patch` +
     (m.demSource ? ` · elevation: ${m.demSource}` : '');
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
-    (lastResult.sample ? ' <span class="tag">Sample data</span>' : '');
+    (lastResult.sample ? ' <span class="tag">Sample data</span>' : '') +
+    (lastResult.includesReachability ? `<p class="muted">Terrain ${Math.round(m.terrainScore)}% (80% weight) · Reachability ${Math.round(m.reachabilityScore)}% (20% weight)</p>` : '');
 
   // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
   const sample = lastResult.source !== 'backend';
