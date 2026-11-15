@@ -9,7 +9,7 @@
 | [LOLA LDEM_80S_20M](https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_20m.lbl) | 20 m source for the nine local lunar rover tiles. |
 | [LOLA LDEM_875S_5M](https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_875s_5m.lbl) | Source for the 5 m de Gerlache and crater detail patches and the coarser crater and polar overview views. |
 | [NASA Goddard Lunar Polar Illumination](https://pgda.gsfc.nasa.gov/products/69) | The atlas summarizes the LOLA 120 m average visibility product, `AVGVISIB_75S_120M`, over each region. |
-| [Lunar south-pole mosaic compiled from NASA imagery](source-assets/atlas/South_Pole.png) | GPT wrote a program that combined a series of NASA images of the lunar south pole into a single mosaic with more consistent lighting. The atlas uses a resized, geographically registered copy. |
+| [NASA SVS lunar south-pole frames](https://svs.gsfc.nasa.gov/vis/a000000/a004200/a004226/frames/9600x3240_3x1_30p/) | Source files used to create the high-quality South Pole image (`source-assets/atlas/South_Pole.png`), a mosaic with more consistent lighting. The atlas uses a resized, geographically registered copy. |
 
 ## Earth atlas and terrain
 
@@ -36,4 +36,4 @@ The data preparation folder also provides an alternative Google Earth Engine wor
 - The lunar driving surface uses color and normal maps from Poly Haven’s Moon 04 surface material, which was scanned from lunar regolith simulant. The elevation underneath comes from LOLA. [Poly Haven Moon 04](https://polyhaven.com/a/moon_04)
 - The Earth driving surface uses 1K color and normal maps converted from two Poly Haven materials. Snow placement is illustrative and based on terrain elevation. [Rocky Trail 02](https://polyhaven.com/a/rocky_trail_02) · [Snow 02](https://polyhaven.com/a/snow_02)
 - We used NASA’s Space Exploration Vehicle model and adapted it for driving. The simulator separates the wheels from the chassis so they can rotate and move with the suspension. [NASA Space Exploration Vehicle](https://science.nasa.gov/3d-resources/space-exploration-vehicle/)
-- The skybox was supplied to the project. Its upstream creator and license have yet to be verified. [Original skybox file](source-assets/rover/Lunar_Skybox.tif)
+- The Lunar Skybox is from [NASA SVS 4451](https://svs.gsfc.nasa.gov/4451). [Original skybox file](source-assets/rover/Lunar_Skybox.tif)
