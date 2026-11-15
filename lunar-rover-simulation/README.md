@@ -22,7 +22,7 @@ python3 -B -m http.server 5175
 
 ## Earth analog mode
 
-The same rover can drive the best Earth analog of each Artemis III region (from the main app's terrain matching). Select a region and an Earth match in the atlas to open the pair in the viewer. Use **Local solar time** to preview lighting on either world before driving. Each world opens at 06:00 local solar time, and the selected time carries into the drive. While driving, press **T** (or **Switch to Moon / Switch to Earth**) to swap the ground under the rover, keeping its position and heading; **Esc** exits.
+The same rover can drive the best Earth analog of each Artemis candidate landing region (from the main app's terrain matching). Select a region and an Earth match in the atlas to open the pair in the viewer. Use **Local solar time** to preview lighting on either world before driving. Each world opens at 06:00 local solar time, and the selected time carries into the drive. While driving, press **T** (or **Switch to Moon / Switch to Earth**) to swap the ground under the rover, keeping its position and heading; **Esc** exits.
 
 - Open straight into Earth mode: `terrain.html?region=slater-plain&world=earth`
 - Earth tiles: `frontend/assets/earth/` (512 × 512 at 30 m = 15.36 km, int16 metres, NASA SRTMGL1 v003), built by `data_prep/prepare_earth_tiles.py` from SRTMGL1 tiles in `../data_prep/cache/srtmgl1/`.

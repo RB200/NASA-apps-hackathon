@@ -1,4 +1,4 @@
-// Artemis III candidate regions (approximate; verify in Moon Trek https://trek.nasa.gov/moon/)
+// Artemis candidate regions (approximate; verify in Moon Trek https://trek.nasa.gov/moon/)
 // boxKm: [width, height] of the region box.
 export const REGIONS = [
   { id: 'cabeus-b-peak',       name: 'Peak near Cabeus B',  lat: -83.6, lon: -68.6, boxKm: [21, 21] },

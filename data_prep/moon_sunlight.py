@@ -1,4 +1,4 @@
-"""Sunlight at each Artemis III candidate region, from NASA's LOLA average solar illumination map.
+"""Sunlight at each Artemis candidate region, from NASA's LOLA average solar illumination map.
 
     python3 -B data_prep/moon_sunlight.py
 

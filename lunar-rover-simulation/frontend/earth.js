@@ -13,7 +13,7 @@ export function flagEmoji(cc) {
     ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 }
 
-// Artemis III candidate regions (same as frontend/regions.js): name and Moon centre.
+// Artemis candidate regions (same as frontend/regions.js): name and Moon centre.
 export const REGIONS = {
   'cabeus-b-peak': { name: 'Peak near Cabeus B', lat: -83.6, lon: -68.6 },
   'haworth': { name: 'Haworth', lat: -86.8, lon: -22.6 },
@@ -252,7 +252,7 @@ export function mountEarthControls(md, { onShowEarth, onShowMoon, onToggle }) {
       line2 = 'Whole-cap overview · NASA LRO LOLA';
     } else if (hasOwnMoonTile(current)) {
       line1 = `🌑 ${regionName}`;
-      line2 = 'Moon · Artemis III candidate region · NASA LRO LOLA 5 m';
+      line2 = 'Moon · Artemis candidate landing region · NASA LRO LOLA';
     } else {
       line1 = `🌑 ${moonViewName[0].toUpperCase()}${moonViewName.slice(1)}`;
       line2 = `Moon · stand-in view (no rover tile for ${regionName} yet)`;

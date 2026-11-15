@@ -4,7 +4,7 @@ import { terrainIndices } from './terrain-chunks.mjs';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=preview-time';
+  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=artemis-regions';
 import { mountLunarSimulation, earthSolarGeometry, solarGeometry } from '../../frontend/lunar-simulation.js?v=preview-time';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
