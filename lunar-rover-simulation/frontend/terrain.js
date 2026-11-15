@@ -21,7 +21,10 @@ renderer.domElement.tabIndex = 0;
 document.querySelector('#scene').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#080d13');
+const moonSkybox = await new THREE.TextureLoader().loadAsync('./assets/moon-skybox.jpg?v=moon-skybox-1');
+moonSkybox.mapping = THREE.EquirectangularReflectionMapping;
+moonSkybox.colorSpace = THREE.SRGBColorSpace;
+scene.background = moonSkybox;
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 2, 900000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
