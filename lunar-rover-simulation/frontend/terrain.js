@@ -360,13 +360,22 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
   if (lunarTextures) varyLunarTextures(material);
   const mesh = viewMode === 'overview' ? new THREE.Mesh(geometry, material)
-    : chunkSurface(geometry, material, width, height, spacing, cutout);
+    : chunkSurface(geometry, material, width, height, spacing, cutout, Boolean(lunarTextures));
   if (mesh.isGroup) geometry.dispose();
   return { mesh, positions, stats, spacing, width, height, midpoint };
 }
 
-function chunkSurface(source, material, width, height, spacing, cutout) {
+function chunkSurface(source, material, width, height, spacing, cutout, lunar) {
   const group = new THREE.Group();
+  // The distant terrain already fades to the mean lunar texture color.
+  // Use diffuse lighting alone there when the raised camera exposes more ground.
+  const distantColor = lunar ? new THREE.Color().setRGB(0.256, 0.239, 0.190) : new THREE.Color(0xffffff);
+  group.userData.materials = {
+    near: material,
+    distant: new THREE.MeshLambertMaterial({
+      color: distantColor, vertexColors: true, side: material.side,
+    }),
+  };
   const chunkSize = 64;
   group.userData.detailRadius = Math.max(350, spacing * 40);
   const stops = (size, seams) => {
@@ -413,7 +422,7 @@ function chunkSurface(source, material, width, height, spacing, cutout) {
 function updateTerrainDetail() {
   for (const layer of [surface, fineSurface]) {
     if (!layer?.isGroup) continue;
-    const detailRadius = layer.userData.detailRadius;
+    const { detailRadius, materials } = layer.userData;
     // Measure horizontally so a nearby high ridge stays detailed.
     const x = (rover?.position.x ?? 0) - layer.position.x;
     const z = (rover?.position.z ?? 0) - layer.position.z;
@@ -424,8 +433,10 @@ function updateTerrainDetail() {
       const dz = Math.max(bounds.min.z - z, z - bounds.max.z, 0);
       const distanceSquared = dx * dx + dz * dz;
       const threshold = chunk.geometry === full ? detailRadius * 1.2 : detailRadius;
-      chunk.geometry = !walkMode || distanceSquared <= threshold * threshold ? full : distant;
-      chunk.receiveShadow = walkMode && distanceSquared <= 80 * 80;
+      const showDetail = !walkMode || distanceSquared <= threshold * threshold;
+      chunk.geometry = showDetail ? full : distant;
+      chunk.material = showDetail ? materials.near : materials.distant;
+      chunk.receiveShadow = walkMode && showDetail && distanceSquared <= 80 * 80;
     }
   }
 }
@@ -437,7 +448,8 @@ function disposeSurface(layer) {
       chunk.userData.full.dispose();
       chunk.userData.distant.dispose();
     }
-    layer.children[0].material.dispose();
+    layer.userData.materials.near.dispose();
+    layer.userData.materials.distant.dispose();
   } else {
     layer.geometry.dispose();
     layer.material.dispose();
