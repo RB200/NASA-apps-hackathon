@@ -18,7 +18,7 @@ const traverse = mountTraverse({
   },
   refocus: () => { if (walkMode) renderer.domElement.focus({ preventScroll: true }); },
 });
-const assetVersion = 'moon-terrain-despike-1';
+const assetVersion = 'moon-terrain-despike-2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -174,8 +174,7 @@ async function readGrid(descriptor) {
 function removeLunarElevationSpikes(data, descriptor) {
   const { width, height } = descriptor;
   const spacing = pixelSize(descriptor) * descriptor.stridePixels;
-  const threshold = Math.max(40, spacing * 0.65) / heightScale(descriptor);
-  const neighborSpreadLimit = threshold * 1.25;
+  const threshold = Math.max(30, spacing * 0.45) / heightScale(descriptor);
   const source = data.slice();
   for (let row = 1; row < height - 1; row++) {
     for (let col = 1; col < width - 1; col++) {
@@ -186,8 +185,10 @@ function removeLunarElevationSpikes(data, descriptor) {
         source[index + width - 1], source[index + width], source[index + width + 1],
       ].sort((a, b) => a - b);
       const median = neighbors[4];
-      if (neighbors[8] - neighbors[0] <= neighborSpreadLimit &&
-          Math.abs(source[index] - median) > threshold) {
+      const sample = source[index];
+      const isolatedPeak = sample - neighbors[8] > threshold * 0.35;
+      const isolatedPit = neighbors[0] - sample > threshold * 0.35;
+      if (Math.abs(sample - median) > threshold && (isolatedPeak || isolatedPit)) {
         data[index] = median;
       }
     }
@@ -216,23 +217,6 @@ function terrainNoise(x, z, size) {
   const mix = THREE.MathUtils.lerp;
   return mix(mix(terrainHash(ix, iz), terrainHash(ix + 1, iz), smooth(u)),
     mix(terrainHash(ix, iz + 1), terrainHash(ix + 1, iz + 1), smooth(u)), smooth(v));
-}
-
-// Synthetic relief at scales the underlying grid can resolve.
-function terrainHeightOffset(x, z, spacing) {
-  if (spacing > 20) return 0;
-  const scale = spacing / 5;
-  const roughness = 1.9 * (terrainNoise(x, z, 16 * scale) - 0.5) +
-    1.45 * (terrainNoise(x, z, 39 * scale) - 0.5);
-  const cellSize = 95 * scale;
-  const ix = Math.floor(x / cellSize), iz = Math.floor(z / cellSize);
-  const radius = (12 + 14 * terrainHash(ix, iz, 317)) * scale;
-  const centerX = (ix + 0.36 + 0.28 * terrainHash(ix, iz, 521)) * cellSize;
-  const centerZ = (iz + 0.36 + 0.28 * terrainHash(ix, iz, 719)) * cellSize;
-  const distance = Math.hypot(x - centerX, z - centerZ) / radius;
-  const bowl = Math.max(0, 1 - distance * distance);
-  const rim = Math.max(0, 1 - Math.abs(distance - 1) / 0.25);
-  return roughness + (0.42 * rim - 1.45 * bowl * bowl) * Math.sqrt(scale);
 }
 
 const colorTextureSize = 256;
@@ -294,9 +278,6 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
       positions[3 * i + 2] = ((height - 1) / 2 - row) * spacing;
       const x = positions[3 * i] + offsetX;
       const z = positions[3 * i + 2] + offsetZ;
-      // Synthetic lunar craterlets only belong on the Moon.
-      const relief = descriptor.body === 'earth' ? 0 : terrainHeightOffset(x, z, spacing);
-      positions[3 * i + 1] += relief;
       if (colorUV) {
         colorUV[2 * i] = x / colorTileMeters;
         colorUV[2 * i + 1] = z / colorTileMeters;
@@ -304,7 +285,7 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
         const mottling = terrainNoise(x - 233, z + 571, spacing * 3) - 0.5;
         const tint = terrainNoise(x + 491, z - 319, 60) - 0.5;
         const brightness = 0.075 + 0.10 * THREE.MathUtils.clamp(t, 0, 1) +
-          0.040 * patches + 0.030 * mottling + relief * 0.008;
+          0.040 * patches + 0.030 * mottling;
         colors[3 * i] = brightness;
         colors[3 * i + 1] = brightness * (0.97 - 0.035 * tint);
         colors[3 * i + 2] = brightness * (0.94 - 0.14 * tint);
@@ -441,10 +422,14 @@ function updateWalkCamera(dt = 1 / 60, snap = false) {
     camera.position.copy(cameraPosition);
     walkCameraReady = true;
   } else {
-    const follow = 1 - Math.exp(-dt * 8);
+    const { running, speed } = simulation.clock.read();
+    const playbackRate = isEarth() ? 1 : running ? speed : 1;
+    const followResponse = 8 + Math.max(0, playbackRate - 1) * 2;
+    const follow = 1 - Math.exp(-dt * followResponse);
     camera.position.lerp(cameraPosition, follow);
   }
-  camera.position.y = Math.max(camera.position.y, terrainAt(camera.position.x, camera.position.z).y + 1.6);
+  const cameraClearance = terrainAt(camera.position.x, camera.position.z).y + 1.6;
+  if (camera.position.y < cameraClearance) camera.position.y = cameraClearance;
   camera.lookAt(walkCameraTarget);
 }
 
