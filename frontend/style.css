@@ -29,6 +29,7 @@ button { font: inherit; color: inherit; }
 #title { position: fixed; top: 16px; left: 16px; pointer-events: none; text-shadow: 0 1px 4px #000, 0 0 2px #000; }
 #title h1 { margin: 0; font-size: 20px; font-weight: 600; }
 #title p { margin: 2px 0 0; color: #c9d0de; }
+
 .demo-button { pointer-events: auto; margin-top: 10px; padding: 9px 14px; border: 0;
   border-radius: 8px; background: var(--accent); color: #17120a; font-weight: 700; cursor: pointer; }
 .demo-button:hover { background: #ffd087; }
@@ -38,8 +39,6 @@ button { font: inherit; color: inherit; }
   background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
   overflow-y: auto; backdrop-filter: blur(8px); box-shadow: 0 10px 40px rgba(0,0,0,.45); }
 .panel[hidden], [hidden] { display: none !important; }
-#pick { left: 16px; display: flex; flex-direction: column; }
-#pick > * { flex-shrink: 0; }
 .right-panels {
   position: fixed; top: 80px; right: 16px; bottom: 44px; width: 380px;
   display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none;
@@ -86,7 +85,6 @@ h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spac
 
 button.primary { margin-top: auto; width: 100%; padding: 11px; border: 0; border-radius: 10px; background: var(--accent);
   color: #1a1206; font-weight: 700; letter-spacing: .08em; cursor: pointer; }
-#pick button.primary { margin-top: 16px; }
 button.primary:disabled { opacity: .4; cursor: default; }
 
 /* Results */
@@ -118,6 +116,10 @@ button.primary:disabled { opacity: .4; cursor: default; }
 .pc div:first-child li::marker { color: var(--good); }
 .pc div:last-child li::marker { color: var(--bad); }
 
+/* Region popup: Enter rover */
+.rover-button { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 12px 0 4px; }
+.rover-button small { font-size: 11px; font-weight: 500; letter-spacing: 0; opacity: .75; }
+
 #credits { position: fixed; left: 16px; right: 16px; bottom: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
 
 @media (max-width: 760px) {
@@ -129,7 +131,7 @@ button.primary:disabled { opacity: .4; cursor: default; }
     width: min(316px, calc(100vw - 24px));
     max-height: max(34px, calc(38vh - var(--lunar-top) - 4px));
   }
-  #pick[hidden] ~ .right-panels:has(#out[hidden]) #lunar-telemetry {
+  .right-panels:has(#out[hidden]) #lunar-telemetry {
     max-height: min(410px, calc(100dvh - var(--lunar-top) - 12px));
   }
   #lunar-telemetry:not([open]) { width: auto; }

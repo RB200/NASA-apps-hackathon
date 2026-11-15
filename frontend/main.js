@@ -178,90 +178,60 @@ function refreshHighlight() {
   document.querySelectorAll('.pin').forEach(el => el.classList.toggle('active', el.dataset.id === selected?.id));
 }
 
-// ---------- Panel 1: ranked constraints ----------
-let priorities = []; // constraint keys, most important first
+// ---------- Priorities ----------
+// Matches rank on every terrain feature that has data on both Moon and Earth, in this order
+// (1st gets the most weight). There is no settings UI: the team kept the app simple.
+const DEFAULT_ORDER = ['p90Slope', 'roughness', 'relief', 'meanSlope', 'shape'];
 
 // Which features have data on both Moon and Earth: the backend says so; without it, the sample set.
 let available = new Set(['meanSlope', 'p90Slope', 'roughness', 'relief']);
+const priorities = () => DEFAULT_ORDER.filter(k => available.has(k));
 fetch(`${API_BASE}/health`).then(r => r.json()).then(h => {
   if (h.features) available = new Set(h.features);
-  if (selected) renderOptions();
+  if (selected) search(); // re-rank once Shape is known to be available
 }).catch(() => {});
-const usable = c => !c.pending && available.has(c.key);
 
-function renderOptions() {
-  const groups = [...new Set(CONSTRAINTS.map(c => c.group))];
-  $('options').innerHTML = groups.map(g => `
-    <div class="group"><span class="group-name">${g}</span>
-      ${CONSTRAINTS.filter(c => c.group === g).map(c => `
-        <label class="opt ${usable(c) ? '' : 'pending'}">
-          <input type="checkbox" value="${c.key}" ${priorities.includes(c.key) ? 'checked' : ''} ${usable(c) ? '' : 'disabled'}>
-          <span><b>${c.label}</b><small>${c.pending ? c.hint : usable(c) ? c.hint : 'Waiting for Moon + Earth data'}</small></span>
-          ${usable(c) ? '' : '<em>soon</em>'}
-        </label>`).join('')}
-    </div>`).join('');
-  $('options').querySelectorAll('input').forEach(cb => cb.onchange = () => {
-    priorities = cb.checked ? [...priorities, cb.value] : priorities.filter(k => k !== cb.value);
-    renderChips();
-  });
-}
-
-function renderChips() {
-  $('chips').innerHTML = priorities.map((k, i) => `
-    <li class="chip"><span class="rank">${i + 1}</span><span class="chip-txt">${C[k].label}</span>
-      <span class="w">${Math.round(weights()[k] * 100)}%</span>
-      <button class="icon" data-k="${k}" aria-label="Remove ${C[k].label}">×</button></li>`).join('');
-  $('chips').querySelectorAll('button').forEach(b => b.onclick = () => {
-    priorities = priorities.filter(k => k !== b.dataset.k);
-    renderOptions(); renderChips();
-  });
-  $('chosen-label').hidden = priorities.length === 0;
-  $('go').disabled = priorities.length === 0;
-}
-
-// Rank → weight: 1st gets n, 2nd n-1, … normalized to sum 1. No sliders to guess.
+// Rank → weight: 1st gets n, 2nd n-1, … normalized to sum 1.
 function weights() {
-  const n = priorities.length;
+  const keys = priorities();
+  const n = keys.length;
   const total = (n * (n + 1)) / 2;
-  return Object.fromEntries(priorities.map((k, i) => [k, (n - i) / total]));
+  return Object.fromEntries(keys.map((k, i) => [k, (n - i) / total]));
 }
 
 function select(r) {
   selected = r;
-  $('demo').hidden = true;
   updateRegionTelemetry();
   refreshHighlight();
   globe.pointOfView({ lat: r.lat, lng: r.lon, altitude: 0.12 }, 900);
-  $('pick').hidden = false;
-  $('out').hidden = true;
+  $('demo').hidden = true;
+  $('out').hidden = false;
+  telemetryPanel.open = false; // give the matches popup the room; one click reopens telemetry
   $('r-name').textContent = r.name;
-  $('r-meta').textContent = `${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
-  renderOptions(); renderChips();
+  $('r-meta').textContent = `Moon · ${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
+  search();
 }
 
 document.querySelector('[data-close]').onclick = () => {
   selected = null;
-  $('demo').hidden = false;
   updateRegionTelemetry();
-  $('pick').hidden = true;
+  $('demo').hidden = false;
   $('out').hidden = true;
   refreshHighlight();
   globe.pointOfView(HOME_VIEW, 900);
 };
-$('out-close').onclick = () => { $('out').hidden = true; };
 
 // ---------- Matching ----------
 let lastResult = null;
 
-$('go').onclick = async () => {
-  if (!selected || !priorities.length) return;
+async function search() {
+  if (!selected) return;
   $('out').hidden = false;
   showList();
   $('status').textContent = 'Searching…';
   $('results').innerHTML = '';
   try {
-    const qs = new URLSearchParams({ region: selected.id, constraints: priorities.join(','), n: 5,
-      include_snow: $('snow').checked });
+    const qs = new URLSearchParams({ region: selected.id, constraints: priorities().join(','), n: 5 });
     const res = await fetch(`${API_BASE}/match?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     lastResult = await res.json();
@@ -271,15 +241,12 @@ $('go').onclick = async () => {
     lastResult = sampleMatch(selected.id, weights(), 5);
   }
   renderResults();
-};
-
-function startDemo() {
-  priorities = ['p90Slope', 'roughness'];
-  $('snow').checked = false;
-  select(REGIONS.find(region => region.id === 'de-gerlache-rim-2'));
-  $('go').click();
 }
 
+// One-click demo (team): open de Gerlache Rim 2's best Earth matches.
+function startDemo() {
+  select(REGIONS.find(region => region.id === 'de-gerlache-rim-2'));
+}
 $('demo').onclick = startDemo;
 if (new URLSearchParams(location.search).get('demo') === 'de-gerlache') startDemo();
 
@@ -317,7 +284,7 @@ function renderResults() {
     : r.sample
       ? `<span class="tag">Sample data</span> Placeholder ${(r.sampleParts ?? ['earth', 'moon']).map(p => p === 'earth' ? 'Earth' : 'Moon').join(' + ')} numbers.`
       : `${r.matches.length} best matches for ${selected.name}`;
-  if (!r.matches.length) $('status').textContent = 'No bare-ground patches match. Try fewer priorities or include snow/ice.';
+  if (!r.matches.length) $('status').textContent = 'No bare-ground Earth terrain matches this region.';
   $('results').innerHTML = r.matches.map((m, i) => `
     <li><button class="result" data-i="${i}">
       <span class="num">${i + 1}</span>
@@ -355,6 +322,12 @@ function showDetail(m) {
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '');
 
+  // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
+  const sample = lastResult.source !== 'backend';
+  $('d-rover').disabled = sample;
+  $('d-rover-note').textContent = sample ? 'needs the backend running' : 'drive this spot · toggle Moon ⇄ Earth';
+  $('d-rover').onclick = () => { location.href = roverLinkFor(m); };
+
   const [mission, why] = missionFit(m.features);
   $('d-mission').innerHTML = `<b>${mission}</b> — ${why}`;
 
@@ -362,8 +335,7 @@ function showDetail(m) {
   $('d-table').innerHTML = `<tr><th></th><th>Moon</th><th>Earth</th><th>Fit</th></tr>` + keys.map(k => {
     const f = m.features[k];
     const cls = f.score >= 75 ? 'good' : f.score >= 45 ? 'ok' : 'bad';
-    const pri = priorities.indexOf(k);
-    return `<tr class="${pri >= 0 ? 'pri' : ''}"><td>${C[k].label}${pri >= 0 ? ` <span class="rank sm">${pri + 1}</span>` : ''}</td>
+    return `<tr><td>${C[k].label}</td>
       <td>${fmt(k, f.moon)}</td><td>${fmt(k, f.earth)}</td>
       <td><span class="bar ${cls}"><i style="width:${f.score}%"></i></span></td></tr>`;
   }).join('');
@@ -373,7 +345,7 @@ function showDetail(m) {
     const f = m.features[k], diff = f.earth - f.moon;
     if (f.score >= 75) pros.push(`${C[k].label} is close to the Moon site (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
     else if (f.score < 45) cons.push(`${C[k].label}: ${diff > 0 ? 'more' : 'less'} than the Moon site (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
-    else if (priorities.includes(k)) cons.push(`${C[k].label} is only a partial match (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
+    else cons.push(`${C[k].label} is only a partial match (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
   }
   cons.push('Earth-shaped terrain: erosion, not impacts. No lunar gravity, vacuum, or polar lighting.');
   $('d-pros').innerHTML = (pros.length ? pros : ['No feature is a close match.']).map(t => `<li>${t}</li>`).join('');
@@ -391,4 +363,18 @@ function showDetail(m) {
   setTimeout(() => { map.invalidateSize(); map.fitBounds(bounds, { padding: [10, 10] }); }, 0);
 }
 
+function roverLinkFor(m) {
+  const url = new URL(roverPage);
+  url.search = new URLSearchParams({
+    region: selected.id, world: 'earth', drive: '1',
+    lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), name: m.name, country: m.country ?? '',
+    match: Math.round(m.match),
+  });
+  return simulation.linkTo(url); // carries the lunar clock across, like the telemetry link
+}
+
 loadRegionMeasurements();
+
+// Coming back from the rover (…/index.html?region=…) reopens that region's matches.
+const startRegion = REGIONS.find(r => r.id === new URLSearchParams(location.search).get('region'));
+if (startRegion) select(startRegion);
