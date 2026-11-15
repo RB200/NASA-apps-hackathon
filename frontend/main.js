@@ -7,6 +7,9 @@ const HOME_VIEW = { lat: -86.5, lng: 20, altitude: 0.3 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
 const C = Object.fromEntries(CONSTRAINTS.map(c => [c.key, c]));
 const $ = id => document.getElementById(id);
+// ISO two-letter country code → flag emoji (🇨🇱). Empty if unknown.
+const flag = cc => /^[A-Za-z]{2}$/.test(cc ?? '')
+  ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 
 const telemetryPanel = $('lunar-telemetry');
 telemetryPanel.open = matchMedia('(min-width: 761px)').matches;
@@ -321,7 +324,7 @@ function renderResults() {
     <li><button class="result" data-i="${i}">
       <span class="num">${i + 1}</span>
       <img src="${thumbUrl(m.lat, m.lon)}" alt="Satellite view of ${m.name}" loading="lazy">
-      <span class="r-txt"><b>${m.name}</b><small>${m.country ?? ''}</small>
+      <span class="r-txt"><b>${flag(m.cc)} ${m.name}</b><small>${m.country ?? ''}</small>
         <span class="pct">${Math.round(m.match)}%<small> match</small></span></span>
     </button></li>`).join('');
   $('results').querySelectorAll('.result').forEach(b => b.onclick = () => showDetail(r.matches[+b.dataset.i]));
@@ -348,7 +351,7 @@ function missionFit(f) {
 function showDetail(m) {
   $('list-view').hidden = true;
   $('detail-view').hidden = false;
-  $('d-name').textContent = m.name;
+  $('d-name').textContent = `${flag(m.cc)} ${m.name}`.trim();
   $('d-meta').textContent = `${m.country ? m.country + ' · ' : ''}${m.near ? 'near ' + m.near + ' · ' : ''}${m.lat.toFixed(2)}°, ${m.lon.toFixed(2)}° · 20 × 20 km patch` +
     (m.demSource ? ` · elevation: ${m.demSource}` : '');
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
@@ -388,6 +391,16 @@ function showDetail(m) {
   }
   map._box.setBounds(bounds);
   setTimeout(() => { map.invalidateSize(); map.fitBounds(bounds, { padding: [10, 10] }); }, 0);
+}
+
+function roverLinkFor(m) {
+  const url = new URL(roverPage);
+  url.search = new URLSearchParams({
+    region: selected.id, world: 'earth', drive: '1',
+    lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), name: m.name, country: m.country ?? '', cc: m.cc ?? '',
+    match: Math.round(m.match),
+  });
+  return simulation.linkTo(url); // carries the lunar clock across, like the telemetry link
 }
 
 loadRegionMeasurements();
