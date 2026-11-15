@@ -49,7 +49,6 @@ button { font: inherit; color: inherit; }
   display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none;
 }
 .right-panels > * { pointer-events: auto; }
-#lunar-telemetry { width: 316px; max-height: min(410px, 50%); flex: 0 0 auto; }
 #out { position: static; flex: 1; min-height: 0; width: 100%; }
 .lunar-rover-link { color: var(--accent); }
 .panel-head { display: flex; align-items: center; gap: 8px; }
@@ -131,15 +130,6 @@ button.primary:disabled { opacity: .4; cursor: default; }
   .panel { top: auto; bottom: 0; left: 0 !important; right: 0 !important; width: auto !important; max-width: none;
     max-height: 62vh; border-radius: 16px 16px 0 0; }
   .right-panels { position: static; --lunar-top: 76px; }
-  #lunar-telemetry {
-    position: fixed; z-index: 2; top: var(--lunar-top); right: 12px;
-    width: min(316px, calc(100vw - 24px));
-    max-height: max(34px, calc(38vh - var(--lunar-top) - 4px));
-  }
-  .right-panels:has(#out[hidden]) #lunar-telemetry {
-    max-height: min(410px, calc(100dvh - var(--lunar-top) - 12px));
-  }
-  #lunar-telemetry:not([open]) { width: auto; }
   #out { position: fixed; z-index: 2; }
   .pc { grid-template-columns: 1fr; }
   #credits { display: none; }

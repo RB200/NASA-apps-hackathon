@@ -1,6 +1,5 @@
 import { REGIONS, CONSTRAINTS, MOON_RADIUS_KM } from './regions.js';
 import { sampleMoon, SAMPLE_EARTH } from './sample.js';
-import { mountLunarSimulation } from './lunar-simulation.js';
 
 const API_BASE = 'http://localhost:8000'; // FastAPI backend (build step 4)
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
@@ -10,42 +9,9 @@ const $ = id => document.getElementById(id);
 const flag = cc => /^[A-Za-z]{2}$/.test(cc ?? '')
   ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 
-const telemetryPanel = $('lunar-telemetry');
-telemetryPanel.open = matchMedia('(min-width: 761px)').matches;
-const simulation = mountLunarSimulation(telemetryPanel, { coordinateDigits: 1 });
-let regionMeasurements;
-
-function updateRegionTelemetry() {
-  simulation.updateRoverPosition(selected?.lat, selected?.lon, regionMeasurements?.[selected?.id]?.meanSlope);
-}
-
-// Read the same regional measurements used by the matcher. The static file
-// also works when serving the repository root with the API offline.
-async function loadRegionMeasurements() {
-  try {
-    const response = await fetch(`${API_BASE}/regions`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    regionMeasurements = (await response.json()).regions;
-  } catch {
-    try {
-      const response = await fetch(new URL('../backend/data/moon_regions.json', import.meta.url));
-      if (response.ok) regionMeasurements = await response.json();
-    } catch {
-      // Leave the slope unavailable when neither source is reachable.
-    }
-  }
-  updateRegionTelemetry();
-}
-
-const roverLink = document.createElement('a');
-roverLink.className = 'lunar-rover-link';
-roverLink.textContent = 'Open rover terrain viewer';
 const roverPage = new URL('../lunar-rover-simulation/frontend/terrain.html', import.meta.url);
 if (location.port === '5173' && /^\/(?:index\.html)?$/.test(location.pathname)
     && ['localhost', '127.0.0.1'].includes(location.hostname)) roverPage.port = '5175';
-roverLink.href = roverPage.href;
-roverLink.addEventListener('click', () => { roverLink.href = simulation.linkTo(roverPage); });
-telemetryPanel.querySelector('.lunar-body').prepend(roverLink);
 
 // ---------- 2D south-pole map ----------
 // Basemap (assets/lunar-south-pole.webp): 1500 × 1500 px, south-polar stereographic, pole at the
@@ -116,13 +82,11 @@ function weights() {
 
 function select(r) {
   selected = r;
-  updateRegionTelemetry();
   refreshHighlight();
   const box = boxes.find(b => b.region === r);
   moonMap.flyToBounds(box.bounds.pad(1.2), { paddingBottomRight: [420, 0], maxZoom: 1.5, duration: 0.8 });
   $('demo').hidden = true;
   $('out').hidden = false;
-  telemetryPanel.open = false; // give the matches popup the room; one click reopens telemetry
   $('r-name').textContent = r.name;
   $('r-meta').textContent = `Moon · ${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
   search();
@@ -130,7 +94,6 @@ function select(r) {
 
 document.querySelector('[data-close]').onclick = () => {
   selected = null;
-  updateRegionTelemetry();
   $('demo').hidden = false;
   $('out').hidden = true;
   refreshHighlight();
@@ -288,10 +251,8 @@ function roverLinkFor(m) {
     lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), name: m.name, country: m.country ?? '', cc: m.cc ?? '',
     match: Math.round(m.match),
   });
-  return simulation.linkTo(url); // carries the lunar clock across, like the telemetry link
+  return url.href;
 }
-
-loadRegionMeasurements();
 
 // Coming back from the rover (…/index.html?region=…) reopens that region's matches.
 const startRegion = REGIONS.find(r => r.id === new URLSearchParams(location.search).get('region'));

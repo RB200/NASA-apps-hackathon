@@ -123,6 +123,33 @@ function solarGeometry(utc, lat, lon) {
   };
 }
 
+// Approximate the Sun in an Earth-fixed frame. Earth mode uses a sidereal
+// rotation, so one playback day carries the local sky from midnight to midnight.
+export function earthSolarGeometry(utc, lat, lon) {
+  if (![utc, lat, lon].every(Number.isFinite) || Math.abs(lat) > 90) return null;
+  const days = (utc - J2000) / DAY_MS;
+  const centuries = days / 36525;
+  const anomaly = 357.529 + 0.98560028 * days;
+  const eclipticLongitude = 280.459 + 0.98564736 * days + 1.915 * sin(anomaly)
+    + 0.020 * sin(2 * anomaly) - 1.397 * centuries;
+  const obliquity = 23.439291 - 0.0130042 * centuries;
+  const ra = Math.atan2(cos(obliquity) * sin(eclipticLongitude), cos(eclipticLongitude)) / DEG;
+  const dec = Math.asin(sin(obliquity) * sin(eclipticLongitude)) / DEG;
+  const gmst = 280.46061837 + 360.98564736629 * days + 0.000387933 * centuries ** 2
+    - centuries ** 3 / 38710000;
+  const hourAngle = ((gmst + lon - ra + 540) % 360 - 180) * DEG;
+  const latitude = lat * DEG;
+  const declination = dec * DEG;
+  const east = -Math.cos(declination) * Math.sin(hourAngle);
+  const north = Math.cos(latitude) * Math.sin(declination)
+    - Math.sin(latitude) * Math.cos(declination) * Math.cos(hourAngle);
+  const up = Math.sin(latitude) * Math.sin(declination)
+    + Math.cos(latitude) * Math.cos(declination) * Math.cos(hourAngle);
+  const elevation = Math.asin(Math.max(-1, Math.min(1, up))) / DEG;
+  const distanceAu = 1.00014 - 0.01671 * cos(anomaly) - 0.00014 * cos(2 * anomaly);
+  return { east, north, up, elevation, irradiance: 1361 * Math.max(0, up) / distanceAu ** 2 };
+}
+
 export function lunarEnvironment(utc, lat, lon) {
   if (![utc, lat, lon].every(Number.isFinite) || Math.abs(lat) > 90) return null;
   const geometry = solarGeometry(utc, lat, lon);
@@ -314,7 +341,7 @@ export function mountLunarSimulation(panel, {
     && Number.isFinite(sentAt) && sentAt >= 0
     && Number.isInteger(startDay / START_DAY_STEP) && startDay >= 0 && startDay <= START_DAY_RANGE;
   const clock = createLunarClock(validHandoff ? epoch : Math.floor(Date.now() / 60000) * 60000, undefined, driving);
-  const baseEpoch = clock.read().epoch - (validHandoff ? startDay * DAY_MS : 0);
+  let baseEpoch = clock.read().epoch - (validHandoff ? startDay * DAY_MS : 0);
   if (validHandoff) {
     daySlider.value = startDay;
     slider.value = Math.min(sliderValue, Number(slider.max));
@@ -327,10 +354,13 @@ export function mountLunarSimulation(panel, {
     const days = Number(daySlider.value);
     const dayText = `${days} Earth ${days === 1 ? 'day' : 'days'}`;
     const lunarText = `${(days / LUNAR_SOLAR_DAY).toFixed(3)} lunar solar days`;
+    const hour = Number(daySlider.value);
+    const earthTime = `${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')}`;
     dayLabel.textContent = world === 'earth' ? 'Earth time' : 'Moon time';
-    dayOffset.textContent = world === 'earth' ? lunarText : dayText;
-    daySlider.setAttribute('aria-valuetext', world === 'earth' ? `${dayText}, ${lunarText}` : dayText);
-    startTime.dateTime = `${utcInputValue(clock.read().epoch)}Z`;
+    dayOffset.textContent = world === 'earth' ? `${earthTime} local solar time` : dayText;
+    daySlider.setAttribute('aria-valuetext', world === 'earth' ? `${earthTime}, local solar time` : dayText);
+    const epoch = world === 'earth' ? baseEpoch + hour * 3_600_000 : clock.read().epoch;
+    startTime.dateTime = `${utcInputValue(epoch)}Z`;
     startTime.textContent = startTime.dateTime.slice(0, -1).replace('T', ' ');
   }
   showStart();
@@ -367,7 +397,7 @@ export function mountLunarSimulation(panel, {
   }
 
   daySlider.addEventListener('input', () => {
-    const nextEpoch = baseEpoch + Number(daySlider.value) * DAY_MS;
+    const nextEpoch = baseEpoch + Number(daySlider.value) * (world === 'earth' ? 3_600_000 : DAY_MS);
     if (nextEpoch === clock.read().epoch) return;
     const running = clock.running;
     clock.reset(nextEpoch);
@@ -407,8 +437,22 @@ export function mountLunarSimulation(panel, {
     clock,
     pause,
     reset,
-    setWorld(selectedWorld) {
+    setWorld(selectedWorld, location = null) {
       world = selectedWorld;
+      if (world === 'earth') {
+        const lon = Number.isFinite(location?.lon) ? location.lon : 0;
+        const utc = clock.read().utc;
+        baseEpoch = Math.floor((utc + lon * 240_000) / DAY_MS) * DAY_MS - lon * 240_000;
+        daySlider.max = '24';
+        daySlider.step = '0.5';
+        daySlider.value = '0';
+        clock.reset(baseEpoch);
+      } else {
+        daySlider.max = String(START_DAY_RANGE);
+        daySlider.step = String(START_DAY_STEP);
+        daySlider.value = '0';
+        baseEpoch = clock.read().epoch;
+      }
       showStart();
     },
     updateRoverPosition(lat, lon, slope, slopeLabel) {

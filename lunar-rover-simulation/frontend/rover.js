@@ -109,7 +109,7 @@ function separateWheels(body) {
 }
 
 export async function loadRover() {
-  const decoder = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/');
+  const decoder = new DRACOLoader().setDecoderPath('./assets/draco/');
   let model;
   try {
     model = (await new GLTFLoader().setDRACOLoader(decoder)

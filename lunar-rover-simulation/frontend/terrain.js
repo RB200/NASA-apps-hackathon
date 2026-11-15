@@ -1,8 +1,8 @@
-import { loadRover, RoverDynamics, setGravity } from './rover.js?v=ground-contact';
+import { loadRover, RoverDynamics, setGravity } from './rover.js?v=moon-sites-earth-light-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats } from './earth.js?v=moon-sites';
-import { mountLunarSimulation } from '../../frontend/lunar-simulation.js';
+  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=moon-sites-earth-light-1';
+import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=moon-sites-earth-light-1';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -520,7 +520,10 @@ function enterWalkMode(spawn = null) {
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
   const earth = isEarth();
-  simulation.setWorld(earth ? 'earth' : 'moon');
+  simulation.setWorld(earth ? 'earth' : 'moon', earth ? {
+    lat: viewData?.descriptor.centerLatitude,
+    lon: viewData?.descriptor.centerLongitude,
+  } : null);
   driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
   const paceButton = $('walk-pace').closest('button');
   paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
@@ -679,7 +682,7 @@ async function showView(mode) {
       viewData = { mode, key, descriptor, data, fine };
     }
     if (mode !== 'earth') lastMoonView = mode;
-    applyWorld(scene, mode === 'earth' ? 'earth' : 'moon');
+    applyWorld(scene, mode === 'earth' ? 'earth' : 'moon', { keyLight, fillLight });
     setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
     refreshWorldToggle?.();
     clearView();
@@ -738,7 +741,7 @@ $('walk-button').addEventListener('click', async () => {
     if (await showView(viewMode === 'overview' ? 'crater' : viewMode)) enterWalkMode();
   } catch (error) {
     console.error(error);
-    $('error-message').textContent = 'The rover model could not load. Please try again.';
+    $('error-message').textContent = `The rover model could not load: ${error?.message ?? 'unknown loader error'}`;
     $('error-message').hidden = false;
   } finally {
     $('loading').classList.remove('visible');
@@ -817,6 +820,13 @@ renderer.setAnimationLoop(() => {
     const earth = isEarth();
     if (earth) {
       if (simulation.clock.running) simulation.clock.advance(dt * 1000); // Moon-site telemetry keeps time
+      const descriptor = viewData?.descriptor;
+      const sun = descriptor && earthSolarGeometry(simulation.clock.read().utc,
+        descriptor.centerLatitude, descriptor.centerLongitude);
+      if (sun) {
+        sunOffset.set(sun.east, sun.up, -sun.north).normalize().multiplyScalar(36);
+        updateEarthLighting(scene, sun.elevation, { hemi: scene.children.find(o => o.isHemisphereLight), keyLight, fillLight });
+      }
       updateWalker(dt, dt);
     }
     else if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
