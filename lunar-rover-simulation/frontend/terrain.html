@@ -7,6 +7,7 @@
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
   <link rel="stylesheet" href="terrain.css" />
   <link rel="stylesheet" href="earth.css" />
+  <link rel="stylesheet" href="traverse.css" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
     {
@@ -90,8 +91,55 @@
       <div class="walk-instructions"><b>W / S</b> drive / reverse <i>·</i> <b>A / D</b> steer <i>·</i> <b>SPACE</b> brake <i>·</i> <b>R</b> reset <i>·</i> drag to orbit <i>·</i> scroll to zoom</div>
     </section>
     <details id="drive-telemetry" class="lunar-telemetry" hidden></details>
+    <details id="live-traverse" hidden>
+      <summary>Live Terrain Comparison <small id="traverse-ready" hidden>· Report ready</small></summary>
+      <div class="traverse-live-content">
+        <p></p>
+        <div id="traverse-live-chart" hidden>
+          <svg class="traverse-chart" role="img" aria-label="Live Earth and Moon elevation relative to each route start, plotted against distance"></svg>
+          <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+        </div>
+        <div class="traverse-actions">
+          <button type="button" id="traverse-finish" disabled>Finish test</button>
+          <button type="button" id="traverse-last" hidden>View last report</button>
+        </div>
+      </div>
+    </details>
+
+    <dialog id="traverse-report" aria-labelledby="traverse-title">
+      <header>
+        <h2 id="traverse-title">Traverse Analysis Report</h2>
+        <form method="dialog"><button autofocus>Close</button></form>
+      </header>
+      <p class="traverse-result-status"></p>
+      <div class="traverse-map-controls">
+        <span>Shared scale and local north · S = start · F = end of paired coverage</span>
+        <label><input type="checkbox"> Zoom both to route</label>
+      </div>
+      <div class="traverse-maps">
+        <figure>
+          <figcaption><strong>EARTH ANALOG</strong><span data-tile="earth"></span></figcaption>
+          <canvas width="360" height="360" data-world="earth" role="img" aria-label="Earth elevation map with the paired section of the route and start and finish markers"></canvas>
+        </figure>
+        <figure>
+          <figcaption><strong>LUNAR REGION</strong><span data-tile="moon"></span></figcaption>
+          <canvas width="360" height="360" data-world="moon" role="img" aria-label="Lunar elevation map with the paired section of the route and start and finish markers"></canvas>
+        </figure>
+      </div>
+      <h3>Route elevation profile</h3>
+      <svg class="traverse-chart" role="img" aria-label="Completed Earth and Moon elevation profiles"></svg>
+      <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+      <table>
+        <thead><tr><th scope="col">Route measurement</th><th scope="col">Earth</th><th scope="col">Moon</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p>Elevations come from the original DEMs at 30 m along-route intervals, plus the final point if between intervals. Slopes are angles between samples; the average is weighted by segment length. The different DEM grid sizes limit the detail each profile can show.</p>
+      <p>These measurements apply to this traverse and are separate from the atlas’s 20 km regional similarity measurements.</p>
+      <h3>What the profiles show</h3>
+      <p class="traverse-interpretation"></p>
+    </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=lunar-skybox-headlights-1"></script>
+  <script type="module" src="terrain.js?v=traverse-1"></script>
 </body>
 </html>

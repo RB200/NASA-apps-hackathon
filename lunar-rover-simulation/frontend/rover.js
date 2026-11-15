@@ -157,11 +157,12 @@ export class RoverDynamics {
     this.updateSuspension();
   }
 
-  update(dt, throttle, steer, brake, limitX, limitZ) {
+  update(dt, throttle, steer, brake, limitX, limitZ, onPosition) {
     this.time += dt;
     while (this.time >= step) {
       this.time -= step;
       this.integrate(throttle, steer, brake, limitX, limitZ);
+      onPosition?.(this.body.position.x, this.body.position.z);
     }
     return Math.hypot(this.vx, this.vz);
   }
