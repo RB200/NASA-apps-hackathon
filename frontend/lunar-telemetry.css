@@ -1,0 +1,33 @@
+.lunar-telemetry {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  overflow: auto;
+  font: 12px/1.4 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+}
+.lunar-telemetry summary { cursor: pointer; font-weight: 650; color: var(--accent); }
+.lunar-body { display: grid; gap: 6px; padding-top: 6px; }
+.lunar-body label { display: block; }
+.lunar-body input { display: block; width: 100%; margin: 3px 0 0; accent-color: var(--accent); }
+.lunar-body input[type="datetime-local"], .lunar-actions button {
+  background: var(--panel-2, rgba(255, 255, 255, .06));
+  color: inherit;
+  color-scheme: dark;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 4px 6px;
+  font: inherit;
+}
+.lunar-body output { float: right; color: var(--accent); }
+.lunar-actions { display: flex; gap: 6px; }
+.lunar-actions button { cursor: pointer; min-width: 70px; }
+.lunar-actions button:first-child { color: var(--accent); }
+.lunar-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 8px; margin: 0; }
+.lunar-body dd { margin: 0; text-align: right; }
+.lunar-body dt, .lunar-body p { color: var(--muted); }
+.lunar-body p { margin: 0; }
+.lunar-body details[open] dl { margin: 4px 0; }

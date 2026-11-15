@@ -6,6 +6,7 @@
   <title>Lunar Terrain Analogs</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="lunar-telemetry.css" />
 </head>
 <body>
   <div id="globe"></div>
@@ -34,6 +35,8 @@
     <button id="go" class="primary" disabled>GO</button>
   </aside>
 
+  <div class="right-panels">
+    <details id="lunar-telemetry" class="lunar-telemetry"></details>
   <!-- Right panel: results list, then detail for one Earth location -->
   <aside id="out" class="panel" hidden>
     <div id="list-view">
@@ -63,6 +66,8 @@
       </div>
     </div>
   </aside>
+
+  </div>
 
   <footer id="credits">
     Moon texture: placeholder (to be replaced with NASA SVS CGI Moon Kit) · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA Artemis III candidate map
