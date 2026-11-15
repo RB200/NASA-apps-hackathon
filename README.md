@@ -33,3 +33,9 @@ The launcher starts all three servers and opens the atlas. The usual atlas addre
 | [source-assets/](source-assets/) | Original map image, rover model, and textures |
 
 See the [backend notes](backend/README.md) for data formats and scoring, the [data preparation notes](data_prep/README.md) for dataset processing, and the [rover notes](lunar-rover-simulation/README.md) for terrain assets and traverse reports.
+
+## Use of AI / Attribution
+
+We used OpenAI Codex, Anthropic Claude, and GitHub Copilot as coding assistants. AI assistance covered implementation, debugging, and testing across the lunar atlas, terrain viewer, rover simulator, analog scoring, and data-processing scripts. Codex also helped draft and edit the project documentation.
+
+We adapted NASA’s Space Exploration Vehicle model so its wheels could rotate and move with the suspension during driving. Data and visual asset credits are listed in [SOURCES.md](SOURCES.md).
