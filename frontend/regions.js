@@ -3,9 +3,9 @@
 export const REGIONS = [
   { id: 'cabeus-b-peak',       name: 'Peak near Cabeus B',  lat: -83.6, lon: -68.6, boxKm: [21, 21] },
   { id: 'haworth',             name: 'Haworth',             lat: -86.8, lon: -22.6, boxKm: [31, 31] },
-  { id: 'malapert-massif',     name: 'Malapert Massif',     lat: -86.0, lon:   0.0, boxKm: [22, 22] },
+  { id: 'malapert-massif',     name: 'Malapert Massif',     lat: -86.0, lon:   0.0, boxKm: [22, 22], labelSide: 'left' },
   { id: 'mons-mouton-plateau', name: 'Mons Mouton Plateau', lat: -84.3, lon:  30.5, boxKm: [78, 58] },
-  { id: 'mons-mouton',         name: 'Mons Mouton',         lat: -85.4, lon:  31.7, boxKm: [17, 17], labelSide: 'left' },
+  { id: 'mons-mouton',         name: 'Mons Mouton',         lat: -85.4, lon:  31.7, boxKm: [17, 17], labelSide: 'below' },
   { id: 'nobile-rim-1',        name: 'Nobile Rim 1',        lat: -85.4, lon:  37.3, boxKm: [21, 21] },
   { id: 'nobile-rim-2',        name: 'Nobile Rim 2',        lat: -84.0, lon:  58.8, boxKm: [21, 21] },
   { id: 'de-gerlache-rim-2',   name: 'de Gerlache Rim 2',   lat: -88.2, lon: -64.4, boxKm: [21, 21] },
