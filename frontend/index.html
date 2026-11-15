@@ -14,31 +14,39 @@
   <header id="title">
     <h1>Lunar South Pole → Earth Analogs</h1>
     <p>Artemis III candidate regions · click one to begin</p>
+    <button id="demo" class="demo-button">Try the de Gerlache scenario</button>
   </header>
+
+  <!-- Left panel: pick constraints for the selected Moon region -->
+  <aside id="pick" class="panel" hidden>
+    <div class="panel-head">
+      <h2 id="r-name"></h2>
+      <button class="icon close" data-close aria-label="Close">×</button>
+    </div>
+    <p id="r-meta" class="muted"></p>
+
+    <p class="label">What matters most? <span class="muted">Pick in order of importance.</span></p>
+    <div id="options"></div>
+
+    <p class="label" id="chosen-label">Your priorities</p>
+    <ol id="chips"></ol>
+
+    <label class="toggle"><input type="checkbox" id="snow"> Include snow / ice terrain</label>
+
+    <button id="go" class="primary" disabled>GO</button>
+  </aside>
 
   <div class="right-panels">
     <details id="lunar-telemetry" class="lunar-telemetry"></details>
-  <!-- Popup for the selected Moon region: top Earth matches, then detail for one Earth location -->
+  <!-- Right panel: results list, then detail for one Earth location -->
   <aside id="out" class="panel" hidden>
     <div id="list-view">
       <div class="panel-head">
-        <h2 id="r-name"></h2>
-        <button class="icon close" data-close aria-label="Close">×</button>
+        <h2>Earth matches</h2>
+        <button class="icon close" id="out-close" aria-label="Close">×</button>
       </div>
-      <p id="r-meta" class="muted"></p>
-      <p class="label">Best Earth matches</p>
       <p id="status" class="muted"></p>
       <ol id="results"></ol>
-
-      <details id="refine">
-        <summary>Refine priorities <span class="muted" id="refine-summary"></span></summary>
-        <p class="muted">Pick what matters most, in order of importance.</p>
-        <div id="options"></div>
-        <p class="label" id="chosen-label">Your priorities</p>
-        <ol id="chips"></ol>
-        <label class="toggle"><input type="checkbox" id="snow"> Include snow / ice terrain</label>
-        <button id="go" class="primary" disabled>Update matches</button>
-      </details>
     </div>
 
     <div id="detail-view" hidden>
@@ -49,7 +57,6 @@
       <p id="d-meta" class="muted"></p>
       <div id="d-map"></div>
       <div id="d-score"></div>
-      <button id="d-rover" class="primary rover-button">Enter rover <small id="d-rover-note">drive this spot · toggle Moon ⇄ Earth</small></button>
       <h3>Best for</h3>
       <p id="d-mission"></p>
       <h3>Terrain comparison</h3>

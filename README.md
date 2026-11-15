@@ -2,12 +2,18 @@
 
 Find Earth locations that match potential Artemis III lunar south-pole base sites.
 
+## Try the de Gerlache scenario
+
+Start the app using the quick start below, then select **Try the de Gerlache scenario** on the opening screen. The app selects de Gerlache Rim 2 and searches for Earth terrain, prioritizing steepest areas followed by roughness. Choose a result to compare measurements, change priorities and search again, or open the rover terrain viewer from the lunar telemetry panel.
+
+With the app running, open [the demo directly](http://localhost:5173/?demo=de-gerlache). If the backend is unavailable, the app labels its placeholder results as sample data.
+
 ## 🚀 Quick Start (30 Seconds)
 
 **Just double-click `START.bat`** in this folder. The script will:
 1. Set up Python environment automatically
-2. Start the backend, app frontend, and rover simulation servers
-3. Open the app in your browser; open the rover viewer from the app when you choose
+2. Start the backend and frontend servers
+3. Open the app in your browser
 4. You're ready to explore! 🌙
 
 **That's it.** No manual setup needed. Skip to [Using the App](#using-the-app) below.
@@ -44,7 +50,6 @@ This app helps find Earth locations that resemble candidate sites for the **Arte
 
 - ✓ Moon globe loads with 9 colored regions visible
 - ✓ Browser shows app at `http://localhost:5173`
-- ✓ Rover viewer is available from the app's **Open rover terrain viewer** link
 - ✓ No errors in browser console (press F12 to check)
 - ✓ Can zoom and rotate moon smoothly without spinning
 - ✓ Can view both north and south poles continuously
@@ -73,7 +78,6 @@ This app helps find Earth locations that resemble candidate sites for the **Arte
 | **Main App** | http://localhost:5173 |
 | **API Docs** | http://localhost:8000/docs |
 | **API Endpoint** | http://localhost:8000/match |
-| **Rover Simulation** | http://localhost:5175/lunar-rover-simulation/frontend/terrain.html |
 
 ---
 
@@ -109,15 +113,7 @@ cd C:\Users\ryanf\Unity_Projects\NASA-apps-hackathon
 python3 -m http.server 5173 --directory frontend
 ```
 
-**Terminal 3 — Rover Simulation Server:**
-```powershell
-cd C:\Users\ryanf\Unity_Projects\NASA-apps-hackathon
-
-# Serve the repository root so the rover can load its assets
-python3 -m http.server 5175
-```
-
-Then open **http://localhost:5173**. Use **Open rover terrain viewer** in the app to open the rover simulation, or visit **http://localhost:5175/lunar-rover-simulation/frontend/terrain.html** directly.
+Then open **http://localhost:5173** in your browser.
 
 ---
 
@@ -143,19 +139,18 @@ Stop-Process -Id XXXX
 
 ### Website won't load or shows blank page
 1. Wait 10 seconds — servers need time to start
-2. Make sure all three server windows are open (black terminal windows)
+2. Make sure **both** server windows are open (black terminal windows)
 3. Refresh browser: **Ctrl+R**
 4. Check browser console for errors: **F12**
 5. Try clearing browser cache: **Ctrl+Shift+Delete**
 
 ### "Module not found" or Import Errors
-If `backend\.venv` is incomplete (for example, `No pyvenv.cfg file`), the startup script recreates it automatically before installing dependencies.
-
-If dependency errors continue, repair it manually from the repository root:
 ```powershell
-python3 -m venv backend\.venv
+# Delete old virtual environment
+Remove-Item -Recurse -Force backend\.venv
+
+# Let START.bat recreate it
 ```
-Then run `START.bat` again.
 
 ### Moon view still spinning when zooming
 - Clear browser cache (**Ctrl+Shift+Delete**)
