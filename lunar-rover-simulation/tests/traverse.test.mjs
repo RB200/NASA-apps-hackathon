@@ -92,3 +92,21 @@ test('bundled de Gerlache and Earth DEMs use the same local metre axes in either
     near(p.distance, traces[1][i].distance);
   });
 });
+
+test('changing Earth terrain replays the route from the new center with the same lunar start', () => {
+  for (const world of ['earth', 'moon']) {
+    const run = new Traverse(world, { x: 90, z: 30 });
+    run.setTiles({ earth: flat(30), moon: flat(30) });
+    run.record(125, 30);
+    run.record(125, 65);
+    const comparison = run.withEarthTile(flat(10));
+    assert.equal(comparison.distance, run.distance);
+    assert.deepEqual(comparison.starts.earth, { x: 0, z: 0 });
+    assert.deepEqual(comparison.starts.moon, run.starts.moon);
+    assert.deepEqual(
+      comparison.route.map(point => comparison.coordinates('moon', point)),
+      run.route.map(point => run.coordinates('moon', point)),
+    );
+    assert.equal(run.incomplete, false);
+  }
+});

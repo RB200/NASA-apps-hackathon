@@ -1,4 +1,4 @@
-import { INTERVAL, Traverse, routeStats, profileDifference } from './traverse.mjs';
+import { INTERVAL, Traverse, routeStats, profileDifference } from './traverse.mjs?v=overlay-1';
 
 const colors = { earth: '#75e2af', moon: '#c1b2ff' };
 const worlds = ['earth', 'moon'];
@@ -41,7 +41,13 @@ function localRoute(test, world) {
   });
 }
 
-function drawMaps(dialog, test, zoom) {
+function drawMaps(dialog, test, zoom, overlay) {
+  const split = dialog.querySelector('.traverse-maps');
+  const combined = dialog.querySelector('.traverse-overlay-map');
+  split.hidden = overlay;
+  combined.hidden = !overlay;
+  const overlayCanvas = combined.querySelector('canvas');
+  const overlayContext = overlayCanvas.getContext('2d');
   const maps = worlds.map(world => ({ world, tile: test.tiles[world], route: localRoute(test, world) }));
   let span = 0;
   for (const { tile, route } of maps) {
@@ -49,16 +55,18 @@ function drawMaps(dialog, test, zoom) {
       for (const { east, north } of route) span = Math.max(span, 2.25 * Math.abs(east - route[0].east), 2.25 * Math.abs(north - route[0].north));
       span = Math.max(span, 180);
     } else {
-      for (const sign of [-1, 1]) {
-        const p = tile.toLocal(tile.halfX, sign * tile.halfZ);
-        span = Math.max(span, 2.05 * Math.abs(p.east), 2.05 * Math.abs(p.north));
+      for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const p = tile.toLocal(x * tile.halfX, z * tile.halfZ);
+        const center = overlay ? route[0] : { east: 0, north: 0 };
+        span = Math.max(span, 2.05 * Math.abs(p.east - center.east), 2.05 * Math.abs(p.north - center.north));
       }
     }
   }
+  const overlayRoutes = [];
   for (const { world, tile, route } of maps) {
     const canvas = dialog.querySelector(`canvas[data-world="${world}"]`);
     const ctx = canvas.getContext('2d'), size = canvas.width, metresPerPixel = span / size;
-    const center = zoom ? route[0] : { east: 0, north: 0 };
+    const center = zoom || overlay ? route[0] : { east: 0, north: 0 };
     const px = e => (e - center.east) / metresPerPixel + size / 2;
     const py = n => (center.north - n) / metresPerPixel + size / 2;
     const raster = new Float32Array(size * size).fill(NaN);
@@ -85,30 +93,57 @@ function drawMaps(dialog, test, zoom) {
         shade * (world === 'earth' ? 158 : 255), 255], i * 4);
     }
     ctx.putImageData(img, 0, 0);
-    ctx.beginPath();
-    route.forEach(({ east, north }, i) => i ? ctx.lineTo(px(east), py(north)) : ctx.moveTo(px(east), py(north)));
-    ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.strokeStyle = '#10171a'; ctx.lineWidth = 6; ctx.stroke();
-    ctx.strokeStyle = colors[world]; ctx.lineWidth = 3; ctx.stroke();
-    for (const [point, label, fill, offset] of [[route[0], 'S', '#fff', -13], [route.at(-1), 'F', colors[world], 13]]) {
-      const x = px(point.east), y = py(point.north);
-      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
-      ctx.strokeStyle = '#10171a'; ctx.lineWidth = 4;
-      ctx.strokeText(label, x + offset, y + 4); ctx.fillText(label, x + offset, y + 4);
+    const pixels = route.map(({ east, north }) => ({ x: px(east), y: py(north) }));
+    if (overlay) {
+      overlayContext.save();
+      overlayContext.globalAlpha = world === 'earth' ? 1 : 0.5;
+      overlayContext.drawImage(canvas, 0, 0);
+      overlayContext.restore();
+      overlayRoutes.push(pixels);
+    } else {
+      drawRoute(ctx, pixels, colors[world], 3);
+      drawMapLabels(ctx, pixels, colors[world], metresPerPixel);
     }
-    const bar = 10 ** Math.floor(Math.log10(span / 3));
-    ctx.fillStyle = '#10171a'; ctx.fillRect(6, size - 38, Math.max(80, bar / metresPerPixel + 16), 32);
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
-    ctx.fillText(metres(bar), 14, size - 21);
-    ctx.fillRect(14, size - 15, bar / metresPerPixel, 2);
-    ctx.fillStyle = '#10171a'; ctx.fillRect(size - 52, 6, 46, 24);
-    ctx.fillStyle = '#fff'; ctx.fillText('↑ N', size - 45, 23);
+  }
+  if (overlay) {
+    drawRoute(overlayContext, overlayRoutes[0], colors.earth, 4);
+    drawRoute(overlayContext, overlayRoutes[1], colors.moon, 2.5, [5, 5]);
+    drawMapLabels(overlayContext, overlayRoutes[0], '#fff', span / overlayCanvas.width);
   }
 }
 
-export function mountTraverse({ refocus }) {
+function drawRoute(ctx, pixels, color, width, dash = []) {
+  ctx.beginPath();
+  pixels.forEach(({ x, y }, i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.lineJoin = ctx.lineCap = 'round';
+  if (!dash.length) {
+    ctx.strokeStyle = '#10171a'; ctx.lineWidth = 7; ctx.stroke();
+  }
+  ctx.setLineDash(dash);
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawMapLabels(ctx, route, finishColor, metresPerPixel) {
+  const size = ctx.canvas.width;
+  for (const [point, label, fill, offset] of [[route[0], 'S', '#fff', -13], [route.at(-1), 'F', finishColor, 13]]) {
+    const { x, y } = point;
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
+    ctx.strokeStyle = '#10171a'; ctx.lineWidth = 4;
+    ctx.strokeText(label, x + offset, y + 4); ctx.fillText(label, x + offset, y + 4);
+  }
+  const bar = 10 ** Math.floor(Math.log10(metresPerPixel * size / 3));
+  ctx.fillStyle = '#10171a'; ctx.fillRect(6, size - 38, Math.max(80, bar / metresPerPixel + 16), 32);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+  ctx.fillText(metres(bar), 14, size - 21);
+  ctx.fillRect(14, size - 15, bar / metresPerPixel, 2);
+  ctx.fillStyle = '#10171a'; ctx.fillRect(size - 52, 6, 46, 24);
+  ctx.fillStyle = '#fff'; ctx.fillText('↑ N', size - 45, 23);
+}
+
+export function mountTraverse({ refocus, earthSites, loadEarthSite }) {
   const panel = document.getElementById('live-traverse');
   const status = panel.querySelector('p');
   const liveGraph = panel.querySelector('svg');
@@ -116,6 +151,13 @@ export function mountTraverse({ refocus }) {
   const ready = document.getElementById('traverse-ready');
   const finish = document.getElementById('traverse-finish');
   const report = document.getElementById('traverse-report');
+  const overlay = document.getElementById('traverse-overlay');
+  const zoom = document.getElementById('traverse-zoom');
+  const earthPicker = document.getElementById('traverse-earth-site');
+  const earthStatus = document.getElementById('traverse-earth-status');
+  let original, selectedEarth, earthRequest = 0;
+  const refreshMaps = () => drawMaps(report, shown, zoom.checked, overlay.checked);
+
   const reopen = document.getElementById('traverse-last');
   let current, last, shown, driving = false, lastPaint = 0, drawnDistance;
   const update = (force = false) => {
@@ -144,7 +186,22 @@ export function mountTraverse({ refocus }) {
 
   function showReport() {
     if (!last || report.open) return;
-    shown = last;
+    original = shown = last;
+    selectedEarth = '';
+    earthRequest++;
+    earthPicker.replaceChildren(new Option(`Original · ${original.tiles.earth.descriptor.name}`, ''));
+    for (const [id, site] of earthSites()) {
+      if (original.tiles.earth.descriptor.file === `earth/${site.file}`) continue;
+      earthPicker.add(new Option(`${site.name} · ${site.country} (${site.centerLatitude.toFixed(2)}°, ${site.centerLongitude.toFixed(2)}°)`, id));
+    }
+    earthStatus.textContent = 'Try the same recorded route from the center of another Earth terrain.';
+    zoom.checked = true;
+    renderReport();
+    report.scrollTop = 0;
+    report.showModal();
+  }
+
+  function renderReport() {
     const test = shown;
     const points = test.profile();
     const stats = worlds.map(world => routeStats(points, world));
@@ -174,10 +231,7 @@ export function mountTraverse({ refocus }) {
       : `${diff.closest === diff.furthest ?
         `At ${metres(diff.closest.distance)}, the starting-relative elevations differ by ${metres(diff.gap(diff.closest))}.` :
         `Beyond the start, the profiles are closest at ${metres(diff.closest.distance)} (a ${metres(diff.gap(diff.closest))} gap) and differ most at ${metres(diff.furthest.distance)} (a ${metres(diff.gap(diff.furthest))} gap).`} ${peak(stats[0], 'Earth')} ${peak(stats[1], 'The Moon')}`;
-    report.querySelector('input').checked = true;
-    drawMaps(report, test, true);
-    report.scrollTop = 0;
-    report.showModal();
+    refreshMaps();
   }
 
   function complete(open = false) {
@@ -197,7 +251,28 @@ export function mountTraverse({ refocus }) {
   let sequence = 0;
   finish.addEventListener('click', () => { complete(true); refocus(); });
   reopen.addEventListener('click', showReport);
-  report.querySelector('input').addEventListener('change', event => drawMaps(report, shown, event.target.checked));
+  zoom.addEventListener('change', refreshMaps);
+  overlay.addEventListener('change', refreshMaps);
+  earthPicker.addEventListener('change', async () => {
+    const request = ++earthRequest;
+    const id = earthPicker.value;
+    if (id) earthStatus.textContent = 'Loading Earth terrain…';
+    try {
+      const earth = id ? await loadEarthSite(id) : null;
+      if (request !== earthRequest || !report.open) return;
+      shown = earth ? original.withEarthTile(earth) : original;
+      selectedEarth = id;
+      renderReport();
+      earthStatus.textContent = id
+        ? 'Same recorded route, sampled from the new Earth terrain’s center.'
+        : 'Original Earth terrain restored.';
+    } catch (error) {
+      if (request !== earthRequest || !report.open) return;
+      console.warn('Could not load the alternative Earth terrain.', error);
+      earthPicker.value = selectedEarth;
+      earthStatus.textContent = 'Could not load that terrain. The previous comparison is still shown.';
+    }
+  });
   report.addEventListener('close', refocus);
   panel.addEventListener('toggle', () => {
     update(true);

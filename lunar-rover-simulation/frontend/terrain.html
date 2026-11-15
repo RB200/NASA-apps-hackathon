@@ -7,7 +7,7 @@
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
   <link rel="stylesheet" href="terrain.css" />
   <link rel="stylesheet" href="earth.css" />
-  <link rel="stylesheet" href="traverse.css" />
+  <link rel="stylesheet" href="traverse.css?v=overlay-1" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
     {
@@ -112,9 +112,14 @@
         <form method="dialog"><button autofocus>Close</button></form>
       </header>
       <p class="traverse-result-status"></p>
+      <div class="traverse-earth-picker">
+        <label>Earth terrain <select id="traverse-earth-site"></select></label>
+        <p id="traverse-earth-status" role="status"></p>
+      </div>
       <div class="traverse-map-controls">
         <span>Shared scale and local north · S = start · F = end of paired coverage</span>
-        <label><input type="checkbox"> Zoom both to route</label>
+        <label><input type="checkbox" id="traverse-overlay"> Overlay maps</label>
+        <label><input type="checkbox" id="traverse-zoom"> Zoom to route</label>
       </div>
       <div class="traverse-maps">
         <figure>
@@ -126,6 +131,10 @@
           <canvas width="360" height="360" data-world="moon" role="img" aria-label="Lunar elevation map with the paired section of the route and start and finish markers"></canvas>
         </figure>
       </div>
+      <figure class="traverse-overlay-map" hidden>
+        <figcaption>Routes aligned at the start · Earth solid, Moon dashed</figcaption>
+        <canvas width="360" height="360" role="img" aria-label="Earth and Moon terrain layers with both routes aligned at the start"></canvas>
+      </figure>
       <h3>Route elevation profile</h3>
       <svg class="traverse-chart" role="img" aria-label="Completed Earth and Moon elevation profiles"></svg>
       <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
@@ -140,6 +149,6 @@
     </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=traverse-moon-terrain-despike-1"></script>
+  <script type="module" src="terrain.js?v=traverse-overlay-1"></script>
 </body>
 </html>

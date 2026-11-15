@@ -56,3 +56,15 @@
   #live-traverse { left: 12px; bottom: 50px; width: min(310px, calc(100vw - 24px)); max-height: max(34px, calc(100dvh - 205px)); }
   .app-shell:has(#live-traverse[open]) #drive-telemetry { max-height: max(34px, calc(100dvh - 416px)); }
 }
+
+.traverse-maps[hidden], .traverse-overlay-map[hidden] { display: none; }
+.traverse-overlay-map { width: min(100%, 420px); margin: 0 auto 16px; }
+.traverse-overlay-map figcaption { margin-bottom: 6px; }
+.traverse-overlay-map canvas { display: block; width: 100%; aspect-ratio: 1; border: 1px solid #3d5358; }
+.traverse-earth-picker { margin-bottom: 12px; }
+.traverse-earth-picker label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.traverse-earth-picker select {
+  max-width: 100%; padding: 5px 8px; font: inherit; color: inherit;
+  background: #24383e; border: 1px solid #587077; border-radius: 4px;
+}
+#traverse-earth-status { margin: 5px 0 0; color: #b8cacc; }

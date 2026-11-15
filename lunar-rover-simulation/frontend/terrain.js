@@ -1,5 +1,5 @@
-import { mountTraverse } from './traverse-ui.js';
-import { gridTriangle, traverseTile } from './traverse.mjs';
+import { mountTraverse } from './traverse-ui.js?v=overlay-1';
+import { gridTriangle, traverseTile } from './traverse.mjs?v=overlay-1';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
@@ -10,6 +10,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
 const traverse = mountTraverse({
+  earthSites: () => Object.entries(earthMetadata?.sites ?? {}),
+  async loadEarthSite(id) {
+    const site = earthMetadata.sites[id];
+    return analysisTile(await loadTraverseTile({ ...site, file: `earth/${site.file}` }), false);
+  },
   refocus: () => { if (walkMode) renderer.domElement.focus({ preventScroll: true }); },
 });
 const assetVersion = 'moon-terrain-despike-1';
@@ -708,6 +713,11 @@ function loadTraverseTile(descriptor) {
   return promise;
 }
 
+function analysisTile(grid, lunar) {
+  return traverseTile(grid, pixelSize(grid.descriptor) * grid.descriptor.stridePixels,
+    heightScale(grid.descriptor), lunar);
+}
+
 function beginTraverse(x, z) {
   const world = isEarth() ? 'earth' : 'moon';
   let reason;
@@ -723,14 +733,12 @@ function beginTraverse(x, z) {
   const paired = reason ? null : isEarth() ? moonSiteDescriptor(region)
     : earthDescriptor(earthMetadata, region, earthSite);
   if (!reason && !paired) reason = 'Paired analysis is unavailable: the dedicated lunar tile is missing.';
-  const tile = (grid, lunar) => traverseTile(grid, pixelSize(grid.descriptor) * grid.descriptor.stridePixels,
-    heightScale(grid.descriptor), lunar);
   traverse.start(world, { x, z }, reason, async () => {
     const other = await loadTraverseTile(paired);
     const earth = world === 'earth' ? active : other;
     const moon = world === 'moon' ? active : other;
     const namedMoon = { ...moon, descriptor: { ...moon.descriptor, name: REGIONS[region].name } };
-    return { earth: tile(earth, false), moon: tile(namedMoon, true) };
+    return { earth: analysisTile(earth, false), moon: analysisTile(namedMoon, true) };
   });
 }
 

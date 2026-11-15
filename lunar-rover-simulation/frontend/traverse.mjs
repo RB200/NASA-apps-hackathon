@@ -106,6 +106,17 @@ export class Traverse {
     this.incomplete = fraction < 1;
   }
 
+  withEarthTile(earth) {
+    const start = this.world === 'earth' ? { x: 0, z: 0 } : this.start;
+    const comparison = new Traverse(this.world, start);
+    comparison.setTiles({ earth, moon: this.tiles.moon });
+    for (let i = 1; i < this.route.length; i++) {
+      const point = this.route[i];
+      comparison.record(start.x + (point.x - this.start.x), start.z + (point.z - this.start.z));
+    }
+    return comparison;
+  }
+
   profile() {
     const end = this.pairedRoute?.at(-1);
     if (!end || end.distance - this.samples.at(-1).distance < 1e-6) return this.samples;
