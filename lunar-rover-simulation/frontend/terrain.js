@@ -1,21 +1,17 @@
-import { mountTraverse } from './traverse-ui.js?v=traverse-all-regions-1';
+import { mountTraverse } from './traverse-ui.js?v=live-elevation';
 import { gridTriangle, traverseTile } from './traverse.mjs?v=environment-1';
 import { terrainIndices } from './terrain-chunks.mjs';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
   mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=artemis-regions';
-import { mountLunarSimulation, earthSolarGeometry, solarGeometry } from '../../frontend/lunar-simulation.js?v=preview-time';
+import { mountLunarSimulation, earthSolarGeometry, solarGeometry } from '../../frontend/lunar-simulation.js?v=drive-velocity';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const $ = id => document.getElementById(id);
 const traverse = mountTraverse({
   readClock: () => simulation.clock.read(),
-  advanceEnvironmentDay() {
-    simulation.clock.skip(24 * 3_600_000);
-    updateDriveTelemetry();
-  },
   earthSites: () => Object.entries(earthMetadata?.sites ?? {}),
   async loadEarthSite(id) {
     const site = earthMetadata.sites[id];
@@ -106,6 +102,7 @@ let walkCameraReady = false;
 let lookPointerId = null;
 let lastPointer = null;
 let walkHudElapsed = 0;
+let walkHudTravel = 0;
 const walkKeys = new Set();
 const walkClock = new THREE.Clock();
 const driveTelemetry = $('drive-telemetry');
@@ -114,7 +111,10 @@ const simulation = mountLunarSimulation(driveTelemetry, {
   driving: true,
   onEpochChange: () => { if (walkMode) updateDriveTelemetry(); },
   onStart: () => renderer.domElement.focus({ preventScroll: true }),
-  onPause: () => walkKeys.clear(),
+  onPause: () => {
+    walkKeys.clear();
+    resetVelocityReadout();
+  },
   onReset: () => { if (walkMode) resetRover(); },
 });
 // Earth analog mode (earth.js). Earth tiles carry their own pixel size and height scale.
@@ -267,40 +267,40 @@ function terrainNoise(x, z, size) {
 }
 
 const colorTileMeters = 24;
-let lunarTexturesPromise;
-function loadLunarTextures() {
-  if (!lunarTexturesPromise) {
+const earthTileMeters = 2;
+const surfaceTextures = new Map();
+function loadSurfaceTextures(prefix) {
+  if (!surfaceTextures.has(prefix)) {
     const loader = new THREE.TextureLoader();
-    lunarTexturesPromise = Promise.all(['color', 'normal'].map(async name => {
-      const texture = await loader.loadAsync(`./assets/moon-ground-${name}.webp`);
+    const textures = Promise.all(['color', 'normal'].map(async name => {
+      const texture = await loader.loadAsync(`./assets/${prefix}-${name}.webp`);
       texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
       texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       if (name === 'color') texture.colorSpace = THREE.SRGBColorSpace;
       return texture;
     })).then(([map, normalMap]) => ({ map, normalMap }))
       .catch(error => {
-        lunarTexturesPromise = null;
-        throw new Error(`Could not load lunar surface textures: ${error.message || 'image request failed'}`);
+        surfaceTextures.delete(prefix);
+        throw new Error(`Could not load surface textures (${prefix}): ${error.message || 'image request failed'}`);
       });
+    surfaceTextures.set(prefix, textures);
   }
-  return lunarTexturesPromise;
+  return surfaceTextures.get(prefix);
 }
 
-function varyLunarTextures(material) {
-  material.onBeforeCompile = shader => {
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
-      vec2 lunarOffset(vec2 cell) {
+const terrainTextureSampling = `
+      vec2 terrainTextureOffset(vec2 cell) {
         return fract(sin(vec2(dot(cell, vec2(127.1, 311.7)),
                               dot(cell, vec2(269.5, 183.3)))) * 43758.5453);
       }
 
-      vec4 sampleLunarTexture(sampler2D tex, vec2 uv, float distanceToCamera, vec4 distantValue) {
-        vec2 dx = dFdx(uv), dy = dFdy(uv);
-        // At horizon distances the randomized blend costs three reads per map
-        // and its fine surface detail is barely visible.
-        if (distanceToCamera >= 220.0) return distantValue;
+      float terrainDetailWeight(float distanceToCamera) {
+        return 1.0 - smoothstep(100.0, 220.0, distanceToCamera);
+      }
+
+      vec4 sampleTerrainTexture(sampler2D tex, vec2 uv, vec2 dx, vec2 dy, vec2 blendUv) {
         // Blend offset samples on a triangular grid, using unshifted gradients for mipmapping.
-        vec2 grid = vec2(uv.x - uv.y * 0.577350269, uv.y * 1.154700538);
+        vec2 grid = vec2(blendUv.x - blendUv.y * 0.577350269, blendUv.y * 1.154700538);
         vec2 cell = floor(grid);
         vec2 f = fract(grid);
         float upper = step(1.0, f.x + f.y);
@@ -311,10 +311,20 @@ function varyLunarTextures(material) {
                            vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y), upper);
         weights = weights * weights * (3.0 - 2.0 * weights);
         weights /= weights.x + weights.y + weights.z;
-        vec4 detail = textureGrad(tex, uv + lunarOffset(a), dx, dy) * weights.x
-             + textureGrad(tex, uv + lunarOffset(b), dx, dy) * weights.y
-             + textureGrad(tex, uv + lunarOffset(c), dx, dy) * weights.z;
-        return mix(detail, distantValue, smoothstep(100.0, 220.0, distanceToCamera));
+        return textureGrad(tex, uv + terrainTextureOffset(a), dx, dy) * weights.x
+             + textureGrad(tex, uv + terrainTextureOffset(b), dx, dy) * weights.y
+             + textureGrad(tex, uv + terrainTextureOffset(c), dx, dy) * weights.z;
+      }`;
+
+function varyLunarTextures(material) {
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+      ${terrainTextureSampling}
+      vec4 sampleLunarTexture(sampler2D tex, vec2 uv, float distanceToCamera, vec4 distantValue) {
+        vec2 dx = dFdx(uv), dy = dFdy(uv);
+        float weight = terrainDetailWeight(distanceToCamera);
+        if (weight <= 0.0) return distantValue;
+        return mix(distantValue, sampleTerrainTexture(tex, uv, dx, dy, uv), weight);
       }`);
     for (const [chunk, sample, distantValue] of [
       // Mean linear color of moon-ground-color.webp.
@@ -328,7 +338,72 @@ function varyLunarTextures(material) {
   };
 }
 
-function createSurface(data, descriptor, heightOrigin = null, colorRange = null, lunarTextures = null, cutout = null) {
+function varyEarthTextures(material, snowTextures) {
+  material.onBeforeCompile = shader => {
+    shader.uniforms.snowMap = { value: snowTextures.map };
+    shader.uniforms.snowNormalMap = { value: snowTextures.normalMap };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float snowCover;\nvarying float vSnowCover;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSnowCover = snowCover;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+      ${terrainTextureSampling}
+      uniform sampler2D snowMap;
+      uniform sampler2D snowNormalMap;
+      varying float vSnowCover;
+
+      vec3 sampleEarthLayer(sampler2D rock, sampler2D snow, vec2 uv, vec2 dx, vec2 dy,
+                            vec3 rockAverage, vec3 snowAverage) {
+        // Keep the blend grid from lining up with the direction of the texture repeat.
+        vec2 blendUv = mat2(0.8, 0.6, -0.6, 0.8) * uv;
+        blendUv += 0.35 * sin(vec2(0.67 * uv.y + 0.43 * uv.x, 0.53 * uv.x - 0.71 * uv.y));
+        // Sample only the visible material except where rock and snow meet.
+        float cover = clamp(vSnowCover, 0.0, 1.0);
+        vec3 detail = vec3(0.0);
+        if (cover < 1.0) detail += (1.0 - cover) * (sampleTerrainTexture(rock, uv, dx, dy, blendUv).rgb - rockAverage);
+        if (cover > 0.0) detail += cover * (sampleTerrainTexture(snow, uv, dx, dy, blendUv).rgb - snowAverage);
+        return detail;
+      }
+
+      vec3 sampleEarthTexture(sampler2D rock, sampler2D snow, vec2 uv, float distanceToCamera,
+                              vec3 rockAverage, vec3 snowAverage, vec2 footprintRange, float broadStrength) {
+        vec2 dx = dFdx(uv), dy = dFdy(uv);
+        // A pixel spans more ground at a shallow angle. Crossfade to a broader
+        // scale before the finer layer starts showing bands across the terrain.
+        float footprint = sqrt(max(dot(dx, dx), dot(dy, dy)));
+        float fine = terrainDetailWeight(distanceToCamera) *
+                     (1.0 - smoothstep(footprintRange.x, footprintRange.y, footprint));
+        const float broadScale = 0.20;
+        float broad = broadStrength * (1.0 - fine) *
+                      (1.0 - smoothstep(220.0, 550.0, distanceToCamera)) *
+                      (1.0 - smoothstep(footprintRange.x, footprintRange.y, footprint * broadScale));
+        vec3 detail = vec3(0.0);
+        if (fine > 0.0) {
+          detail += fine * sampleEarthLayer(rock, snow, uv, dx, dy, rockAverage, snowAverage);
+        }
+        if (broad > 0.0) {
+          detail += broad * sampleEarthLayer(rock, snow, uv * broadScale + vec2(13.4, 7.8),
+                                             dx * broadScale, dy * broadScale, rockAverage, snowAverage);
+        }
+        return detail;
+      }`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_fragment>', `
+        // Mean linear luminance of the rocky dirt and snow color maps.
+        vec3 detail = sampleEarthTexture(map, snowMap, vMapUv, length(vViewPosition),
+                                        vec3(0.166), vec3(0.380), vec2(0.018, 0.085), 0.75);
+        float luminance = dot(detail, vec3(0.2126, 0.7152, 0.0722));
+        diffuseColor.rgb *= max(0.0, 1.0 + luminance * 1.8);
+      `)
+      // Three.js has separate object-space and tangent-space normal-map branches.
+      .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replaceAll(
+        'texture2D( normalMap, vNormalMapUv ).xyz',
+        `(vec3(0.5, 0.5, 1.0) +
+          sampleEarthTexture(normalMap, snowNormalMap, vNormalMapUv, length(vViewPosition),
+                             vec3(0.5, 0.5, 1.0), vec3(0.5, 0.5, 1.0), vec2(0.010, 0.045), 0.55))`));
+  };
+}
+
+function createSurface(data, descriptor, heightOrigin = null, colorRange = null, textures = null, cutout = null) {
   const { width, height } = descriptor;
   const spacing = pixelSize(descriptor) * descriptor.stridePixels;
   const stats = gridStats(data, heightScale(descriptor));
@@ -338,8 +413,11 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
   const colorMax = colorRange?.max ?? stats.max;
   const positions = new Float32Array(width * height * 3);
   const colors = new Float32Array(width * height * 3);
-  const colorUV = lunarTextures ? new Float32Array(width * height * 2) : null;
+  const colorUV = textures ? new Float32Array(width * height * 2) : null;
   const lunar = descriptor.body !== 'earth';
+  const snowCover = textures?.snow ? new Float32Array(width * height) : null;
+  const snowColor = new THREE.Color('#e7eaf0');
+  const tileMeters = lunar ? colorTileMeters : earthTileMeters;
   const lunarDetail = lunar && spacing <= 20;
   const offsetX = descriptor.offsetX ?? 0;
   const offsetZ = descriptor.offsetZ ?? 0;
@@ -355,8 +433,8 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
       const x = positions[3 * i] + offsetX;
       const z = positions[3 * i + 2] + offsetZ;
       if (colorUV) {
-        colorUV[2 * i] = x / colorTileMeters;
-        colorUV[2 * i + 1] = z / colorTileMeters;
+        colorUV[2 * i] = x / tileMeters;
+        colorUV[2 * i + 1] = z / tileMeters;
       }
       if (lunarDetail) {
         const patches = terrainNoise(x + 811, z, 110) - 0.5;
@@ -368,9 +446,13 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
         colors[3 * i + 1] = brightness * (0.97 - 0.035 * tint);
         colors[3 * i + 2] = brightness * (0.94 - 0.14 * tint);
       } else {
-        colors[3 * i] = color.r;
-        colors[3 * i + 1] = color.g;
-        colors[3 * i + 2] = color.b;
+        // Illustrative snow line using elevation and broad terrain variation.
+        const snow = snowCover ? THREE.MathUtils.smoothstep(
+          heightM + (terrainNoise(x, z, 300) - 0.5) * 320, 4800, 5300) : 0;
+        if (snowCover) snowCover[i] = snow;
+        colors[3 * i] = THREE.MathUtils.lerp(color.r, snowColor.r, snow);
+        colors[3 * i + 1] = THREE.MathUtils.lerp(color.g, snowColor.g, snow);
+        colors[3 * i + 2] = THREE.MathUtils.lerp(color.b, snowColor.b, snow);
       }
     }
   }
@@ -392,13 +474,19 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   if (colorUV) geometry.setAttribute('uv', new THREE.BufferAttribute(colorUV, 2));
+  if (snowCover) geometry.setAttribute('snowCover', new THREE.BufferAttribute(snowCover, 1));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
-  const material = lunarTextures
-    ? new THREE.MeshStandardMaterial({ vertexColors: true, ...lunarTextures, roughness: 1, metalness: 0,
+  const material = textures
+    ? new THREE.MeshStandardMaterial({ vertexColors: true, map: textures.map, normalMap: textures.normalMap, roughness: 1, metalness: 0,
       side: THREE.DoubleSide })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
-  if (lunarTextures) varyLunarTextures(material);
+  if (snowCover) {
+    material.normalScale.setScalar(0.65);
+    varyEarthTextures(material, textures.snow);
+  } else if (textures) {
+    varyLunarTextures(material);
+  }
   const mesh = chunkSurface(geometry, material, width, height, spacing, cutout, lunar);
   geometry.dispose();
   return { mesh, positions, stats, spacing, width, height, midpoint };
@@ -633,7 +721,7 @@ function updateWalkCamera(dt = 1 / 60, snap = false) {
     walkCameraReady = true;
   } else {
     const { running, speed } = simulation.clock.read();
-    const playbackRate = isEarth() ? 1 : running ? speed : 1;
+    const playbackRate = running ? speed : 1;
     const followResponse = 8 + Math.max(0, playbackRate - 1) * 2;
     const follow = 1 - Math.exp(-dt * followResponse);
     camera.position.lerp(cameraPosition, follow);
@@ -697,31 +785,40 @@ function updateDriveTelemetry() {
 const velocityFormat = new Intl.NumberFormat('en-US', {
   signDisplay: 'exceptZero', minimumFractionDigits: 1, maximumFractionDigits: 1,
 });
-function showVelocity() {
-  const { vx, vz, yaw } = dynamics;
-  const forwardKmh = 3.6 * (vx * Math.sin(yaw) - vz * Math.cos(yaw));
+function showVelocity(forwardMetersPerSecond) {
+  const forwardKmh = 3.6 * forwardMetersPerSecond;
   $('walk-pace').textContent = `${velocityFormat.format(forwardKmh)} km/h`;
+}
+
+function resetVelocityReadout() {
+  walkHudElapsed = 0;
+  walkHudTravel = 0;
+  showVelocity(0);
 }
 
 const recordTraversePosition = (x, z) => traverse.record(x, z);
 
-function updateWalker(simulatedDt, frameDt) {
+function updateWalker(simulatedDt, frameDt, realSeconds) {
   const axis = (a, b, c, d) => Number(walkKeys.has(a) || walkKeys.has(b)) -
     Number(walkKeys.has(c) || walkKeys.has(d));
+  const { x, z } = rover.position;
   dynamics.update(simulatedDt, axis('w', 'arrowup', 's', 'arrowdown'),
     axis('d', 'arrowright', 'a', 'arrowleft'), walkKeys.has(' '),
     (currentView.width - 1) * currentView.spacing / 2 - 4,
     (currentView.height - 1) * currentView.spacing / 2 - 4, recordTraversePosition);
   walkYaw = dynamics.yaw;
   updateWalkCamera(frameDt);
-  walkHudElapsed += frameDt;
+  walkHudTravel += (rover.position.x - x) * Math.sin(walkYaw) -
+    (rover.position.z - z) * Math.cos(walkYaw);
+  walkHudElapsed += realSeconds;
   if (walkHudElapsed > 0.12) {
     const distance = dynamics.distance;
     $('walk-distance').textContent = distance < 1000 ? `${distance.toFixed(0)} m` : `${(distance / 1000).toFixed(2)} km`;
-    showVelocity();
+    showVelocity(walkHudTravel / walkHudElapsed);
     $('walk-ground').textContent = `${Math.round(terrainAt(rover.position.x, rover.position.z).elevation).toLocaleString()} m`;
     updateDriveTelemetry();
     walkHudElapsed = 0;
+    walkHudTravel = 0;
   }
 }
 
@@ -736,7 +833,7 @@ function resetRover(spawn = null) {
   dynamics = new RoverDynamics(rover, terrainAt, x, z, walkYaw);
   beginTraverse(x, z);
   $('walk-distance').textContent = '0 m';
-  $('walk-pace').textContent = '0.0 km/h';
+  resetVelocityReadout();
   $('walk-ground').textContent = `${Math.round(terrainAt(x, z).elevation).toLocaleString()} m`;
   camera.near = 0.75;
   const { width, height, spacing, stats } = currentView;
@@ -953,8 +1050,6 @@ async function showView(mode, forDrive = walkMode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
-    const lunarTextures = forDrive && mode !== 'earth' ? await loadLunarTextures() : null;
-    if (request !== viewRequest) return false;
     const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}`
       : mode === 'moon-site' ? `moon:${earthRegion}` : mode;
     if (!viewData || viewData.key !== key) {
@@ -972,6 +1067,19 @@ async function showView(mode, forDrive = walkMode) {
       const coarse = { mode, key, descriptor, data };
       viewData = fine ? { ...coarse, ...alignCraterDetail(coarse, fine) } : coarse;
     }
+    let textures = null;
+    if (forDrive) {
+      if (mode === 'earth') {
+        const [rock, snow] = await Promise.all([
+          loadSurfaceTextures('earth-ground-rock'),
+          loadSurfaceTextures('earth-ground-snow'),
+        ]);
+        textures = { ...rock, snow };
+      } else {
+        textures = await loadSurfaceTextures('moon-ground');
+      }
+      if (request !== viewRequest) return false;
+    }
     if (mode !== 'earth') lastMoonView = mode;
     applyWorld(scene, mode === 'earth' ? 'earth' : 'moon', { keyLight, fillLight });
     const world = mode === 'earth' ? 'earth' : 'moon';
@@ -985,13 +1093,13 @@ async function showView(mode, forDrive = walkMode) {
     setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
     refreshWorldToggle?.();
     clearView();
-    const view = createSurface(viewData.data, viewData.descriptor, null, null, lunarTextures, viewData.cutout);
+    const view = createSurface(viewData.data, viewData.descriptor, null, null, textures, viewData.cutout);
     viewData.positions = view.positions;
     currentView = view;
     surface = view.mesh;
     scene.add(surface);
     if (viewData.fine) {
-      const detail = createSurface(viewData.fine.data, viewData.fine.descriptor, view.midpoint, view.stats, lunarTextures);
+      const detail = createSurface(viewData.fine.data, viewData.fine.descriptor, view.midpoint, view.stats, textures);
       fineSurface = detail.mesh;
       viewData.fine.positions = detail.positions;
       fineSurface.position.x = viewData.fine.descriptor.offsetX ?? 0;
@@ -1009,7 +1117,7 @@ async function showView(mode, forDrive = walkMode) {
   } catch (error) {
     if (request !== viewRequest) return false;
     console.error(error);
-    $('error-message').textContent = error?.message?.startsWith('Could not load lunar surface textures:')
+    $('error-message').textContent = error?.message?.startsWith('Could not load surface textures (')
       ? error.message : mode === 'earth' && earthSite
       ? `Could not load elevation for ${earthSite.name}. Make sure the backend is running and elevation data is available for this location. ${error.message}`
       : 'The elevation tile could not be loaded. Serve this folder over HTTP and check that the assets are present.';
@@ -1166,14 +1274,14 @@ renderer.setAnimationLoop(() => {
         if (next !== ratio) renderer.setPixelRatio(next);
       }
     }
-    const running = simulation.clock.running;
     // Keep simulated UTC at the selected rate even when rendering runs slowly.
     // Bound only the physics step to preserve the rover's contact stability.
     simulation.clock.advance(frameSeconds * 1000);
+    const { running, speed, utc } = simulation.clock.read();
     const earth = isEarth();
     if (earth) {
       const descriptor = viewData?.descriptor;
-      const sun = descriptor && earthSolarGeometry(simulation.clock.read().utc,
+      const sun = descriptor && earthSolarGeometry(utc,
         descriptor.centerLatitude, descriptor.centerLongitude);
       if (sun) {
         sunOffset.set(sun.east, sun.up, -sun.north).normalize().multiplyScalar(36);
@@ -1181,13 +1289,12 @@ renderer.setAnimationLoop(() => {
         setHeadlightLevel(1 - THREE.MathUtils.smoothstep(sun.elevation, -8, -2));
       }
       else setHeadlightLevel(1);
-      updateWalker(dt, dt);
     }
     else {
       setHeadlightLevel(1); // lunar rover lamps remain on throughout the Moon simulation
-      if (running) updateWalker(dt * simulation.clock.read().speed, dt);
-      else updateWalkCamera(dt);
     }
+    if (running) updateWalker(dt * speed, dt, frameSeconds);
+    else updateWalkCamera(dt);
     traverse.tick();
     keyLight.target.position.copy(rover.position);
     keyLight.position.copy(rover.position).add(earth ? sunOffset : driveSunOffset);

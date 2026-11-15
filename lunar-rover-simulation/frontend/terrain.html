@@ -7,7 +7,7 @@
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
   <link rel="stylesheet" href="terrain.css?v=preview-time" />
   <link rel="stylesheet" href="earth.css?v=preview-time" />
-  <link rel="stylesheet" href="traverse.css?v=environment-1" />
+  <link rel="stylesheet" href="traverse.css?v=live-elevation" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
     {
@@ -99,11 +99,9 @@
       <div class="traverse-live-content">
         <p></p>
         <div id="traverse-live-chart" hidden>
-          <label>Live graph <select id="traverse-live-metric"></select></label>
+          <h3>Terrain elevation by distance</h3>
           <svg class="traverse-chart" role="img" aria-label="Live Earth and Moon elevation relative to each route start, plotted against distance"></svg>
           <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
-          <p class="traverse-environment-note" hidden></p>
-          <button type="button" id="traverse-advance-day" hidden>Advance 24 simulated hours</button>
         </div>
         <div class="traverse-actions">
           <button type="button" id="traverse-finish" disabled>Finish test</button>
@@ -162,6 +160,6 @@
     </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=artemis-regions"></script>
+  <script type="module" src="terrain.js?v=live-elevation"></script>
 </body>
 </html>

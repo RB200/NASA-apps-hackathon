@@ -68,7 +68,8 @@
   background: #24383e; border: 1px solid #587077; border-radius: 4px;
 }
 #traverse-earth-status { margin: 5px 0 0; color: #b8cacc; }
-#traverse-live-metric, #traverse-report-metric {
+#traverse-live-chart h3 { margin: 6px 0; font-size: 1em; }
+#traverse-report-metric {
   max-width: 100%; padding: 3px 6px; font: inherit; color: inherit;
   background: #24383e; border: 1px solid #587077; border-radius: 4px;
 }

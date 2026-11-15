@@ -34,5 +34,6 @@ The data preparation folder also provides an alternative Google Earth Engine wor
 ## Visual assets
 
 - The lunar driving surface uses color and normal maps from Poly Haven’s Moon 04 surface material, which was scanned from lunar regolith simulant. The elevation underneath comes from LOLA. [Poly Haven Moon 04](https://polyhaven.com/a/moon_04)
+- The Earth driving surface uses 1K color and normal maps converted from two Poly Haven materials. Snow placement is illustrative and based on terrain elevation. [Rocky Trail 02](https://polyhaven.com/a/rocky_trail_02) · [Snow 02](https://polyhaven.com/a/snow_02)
 - We used NASA’s Space Exploration Vehicle model and adapted it for driving. The simulator separates the wheels from the chassis so they can rotate and move with the suspension. [NASA Space Exploration Vehicle](https://science.nasa.gov/3d-resources/space-exploration-vehicle/)
 - The skybox was supplied to the project. Its upstream creator and license have yet to be verified. [Original skybox file](source-assets/rover/Lunar_Skybox.tif)

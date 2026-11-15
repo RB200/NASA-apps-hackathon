@@ -181,18 +181,14 @@ function drawMapLabels(ctx, route, finishColor, metresPerPixel) {
   ctx.fillStyle = '#fff'; ctx.fillText('↑ N', size - 45, 23);
 }
 
-export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, advanceEnvironmentDay }) {
+export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock }) {
   const panel = document.getElementById('live-traverse');
   const status = panel.querySelector('p');
   const liveGraph = panel.querySelector('svg');
   const liveChart = document.getElementById('traverse-live-chart');
-  const liveMetric = document.getElementById('traverse-live-metric');
-  const advanceDay = document.getElementById('traverse-advance-day');
   const reportMetric = document.getElementById('traverse-report-metric');
   const reportEnvironment = document.querySelector('.traverse-environment');
-  liveMetric.add(new Option('Terrain elevation by distance', ''));
   for (const [key, metric] of Object.entries(environmentMetrics)) {
-    liveMetric.add(new Option(metric.label, key));
     reportMetric.add(new Option(metric.label, key));
   }
   const ready = document.getElementById('traverse-ready');
@@ -206,7 +202,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
   const refreshMaps = () => drawMaps(report, shown, zoom.checked, overlay.checked);
 
   const reopen = document.getElementById('traverse-last');
-  let current, last, shown, driving = false, lastPaint = 0, drawnDistance, drawnClock;
+  let current, last, shown, driving = false, lastPaint = 0, drawnDistance;
   const update = (force = false) => {
     if (!force && performance.now() - lastPaint < 200) return;
     lastPaint = performance.now();
@@ -226,15 +222,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
       test.incomplete ? `Incomplete · tile edge at ${metres(test.pairedDistance)} · driven ${metres(test.distance)}` :
         `Recording · ${metres(test.distance)} · ${INTERVAL} m stations`));
     if (!panel.open || !test.tiles) return;
-    advanceDay.hidden = !liveMetric.value;
-    if (liveMetric.value) {
-      if (force || drawnClock !== test.environmentClock) {
-        drawEnvironment(liveChart, test, liveMetric.value);
-        drawnClock = test.environmentClock;
-      }
-    } else if (force || drawnDistance !== test.pairedDistance) {
-      liveChart.querySelector('.traverse-environment-note').hidden = true;
-      liveChart.querySelector('.traverse-key span').hidden = false;
+    if (force || drawnDistance !== test.pairedDistance) {
       graph(liveGraph, test.profile());
       drawnDistance = test.pairedDistance;
     }
@@ -252,7 +240,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
     }
     earthStatus.textContent = 'Try the same recorded route from the center of another Earth terrain.';
     zoom.checked = true;
-    reportMetric.value = liveMetric.value || 'temperature';
+    reportMetric.value = 'temperature';
     renderReport();
     report.scrollTop = 0;
     report.showModal();
@@ -317,13 +305,6 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
     const next = environmentClock(previous, readClock());
     if (next.start !== previous.start || next.seconds !== previous.seconds) test.environmentClock = next;
   }
-  advanceDay.addEventListener('click', () => {
-    advanceEnvironmentDay();
-    captureEnvironmentClock();
-    update(true);
-    refocus();
-  });
-  liveMetric.addEventListener('change', () => update(true));
   reportMetric.addEventListener('change', () => drawEnvironment(reportEnvironment, shown, reportMetric.value));
   zoom.addEventListener('change', refreshMaps);
   overlay.addEventListener('change', refreshMaps);
