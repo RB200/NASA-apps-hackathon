@@ -47,21 +47,19 @@
 .walk-readouts .telemetry-method { display: grid; gap: 5px; text-align: left; }
 .lunar-speed .telemetry-method { float: right; color: var(--accent); }
 .lunar-speed > span { color: var(--muted); }
-.lunar-epoch > button, .lunar-date-dialog input, .lunar-date-dialog select {
-  width: 100%; padding: 6px 8px; margin-top: 3px;
-  font: inherit; color: inherit; color-scheme: dark; text-align: left;
-  border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2, #192229);
-}
-.lunar-epoch > button { cursor: pointer; }
-.lunar-date-dialog, .lunar-method-dialog {
-  width: min(330px, calc(100% - 32px)); padding: 16px;
+.lunar-start { display: grid; grid-template-columns: auto 1fr; gap: 3px 6px; }
+.lunar-start input, #lunar-start-utc { grid-column: 1 / -1; }
+.lunar-day-offset { text-align: right; color: var(--accent); }
+#lunar-start-utc { color: var(--muted); }
+#lunar-start-utc time { margin-left: .3em; color: var(--text); }
+
+.lunar-method-dialog {
+  padding: 16px;
   border: 1px solid var(--line); border-radius: 12px; color: var(--text);
   background: #141b21; color-scheme: dark;
 }
-.lunar-date-dialog::backdrop, .lunar-method-dialog::backdrop { background: rgba(0, 0, 0, .5); }
-.lunar-date-dialog form { display: grid; gap: 12px; }
-.lunar-date-dialog h2, .lunar-method-dialog h2 { margin: 0; font-size: 16px; }
-.lunar-date-dialog form label { color: var(--text); }
+.lunar-method-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.lunar-method-dialog h2 { margin: 0; font-size: 16px; }
 
 .lunar-method-dialog {
   width: min(390px, calc(100% - 32px));

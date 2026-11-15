@@ -1,5 +1,8 @@
 const DEG = Math.PI / 180;
 const DAY_MS = 86_400_000;
+const LUNAR_SOLAR_DAY = 29.53; // NASA Moon Fact Sheet, synodic period.
+const START_DAY_RANGE = 30;
+const START_DAY_STEP = 0.5;
 const J2000 = Date.UTC(2000, 0, 1, 12);
 const SPEEDS = [[0, 1], [68, 16], [100, 60], [200, 3600], [300, 21600], [400, 86400]];
 export const DRIVE_SLIDER_MAX = 68;
@@ -215,25 +218,12 @@ export function mountLunarSimulation(panel, {
   panel.innerHTML = `
     <summary>Lunar telemetry</summary>
     <div class="lunar-body">
-      <div class="lunar-epoch">
-        <span id="lunar-epoch-label">Simulation start (UTC)</span>
-        <button type="button" data-lunar-epoch aria-haspopup="dialog" aria-labelledby="lunar-epoch-label lunar-epoch-value">
-          <span id="lunar-epoch-value"></span>
-        </button>
-        <dialog class="lunar-date-dialog" aria-labelledby="lunar-date-title">
-          <form>
-            <h2 id="lunar-date-title">Simulation start (UTC)</h2>
-            <label>Date <input type="date" min="1900-01-01" max="2099-12-31" required></label>
-            <label>Choose a time
-              <select data-lunar-time-choice><option value="">Select UTC time</option></select>
-            </label>
-            <label>Or enter an exact time <input type="time" required></label>
-            <div class="lunar-actions">
-              <button type="submit">Set UTC</button>
-              <button type="button" data-lunar-cancel>Cancel</button>
-            </div>
-          </form>
-        </dialog>
+      <div class="lunar-start">
+        <label for="lunar-start-day" data-lunar-day-label>Moon time</label>
+        <output class="lunar-day-offset" for="lunar-start-day"></output>
+        <input id="lunar-start-day" type="range" min="0" max="${START_DAY_RANGE}" step="${START_DAY_STEP}" value="0"
+               aria-describedby="lunar-start-utc">
+        <div id="lunar-start-utc">Start UTC <time></time></div>
       </div>
       <label for="lunar-speed">Time acceleration</label>
       <div class="lunar-speed">
@@ -307,39 +297,43 @@ export function mountLunarSimulation(panel, {
     methodDialog.showModal();
   });
 
-  const dateButton = panel.querySelector('[data-lunar-epoch]');
-  const dialog = panel.querySelector('.lunar-date-dialog');
-  const date = dialog.querySelector('input[type="date"]');
-  const exact = dialog.querySelector('input[type="time"]');
-  const choices = dialog.querySelector('select');
-  for (let hour = 0; hour < 24; hour++) {
-    for (const minute of ['00', '30']) {
-      const time = `${String(hour).padStart(2, '0')}:${minute}`;
-      choices.add(new Option(time, time));
-    }
-  }
+  const daySlider = panel.querySelector('#lunar-start-day');
+  const dayLabel = panel.querySelector('[data-lunar-day-label]');
+  const dayOffset = panel.querySelector('.lunar-day-offset');
+  const startTime = panel.querySelector('#lunar-start-utc time');
+  let world = 'moon';
   const slider = panel.querySelector('[data-lunar-speed]');
   const toggle = panel.querySelector('[data-lunar-toggle]');
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-lunar]')]
     .map(field => [field.dataset.lunar, field]));
   const handoff = new URLSearchParams(location.hash.slice(1)).get('lunar');
-  const [epoch, elapsed, sliderValue, sentAt] = handoff ? handoff.split(',').map(Number) : [];
+  const [epoch, elapsed, sliderValue, sentAt, startDay = 0] = handoff ? handoff.split(',').map(Number) : [];
   const validHandoff = Number.isFinite(epoch) && Math.abs(epoch) < 8e15
     && Number.isFinite(elapsed) && elapsed >= 0 && Math.abs(epoch + elapsed) < 8e15
     && Number.isInteger(sliderValue) && sliderValue >= 0 && sliderValue <= 400
-    && Number.isFinite(sentAt) && sentAt >= 0;
+    && Number.isFinite(sentAt) && sentAt >= 0
+    && Number.isInteger(startDay / START_DAY_STEP) && startDay >= 0 && startDay <= START_DAY_RANGE;
   const clock = createLunarClock(validHandoff ? epoch : Math.floor(Date.now() / 60000) * 60000, undefined, driving);
+  const baseEpoch = clock.read().epoch - (validHandoff ? startDay * DAY_MS : 0);
   if (validHandoff) {
+    daySlider.value = startDay;
     slider.value = Math.min(sliderValue, Number(slider.max));
     clock.setSpeed(speedAt(Number(slider.value)));
     const transit = sentAt ? Math.max(0, Date.now() - sentAt) * speedAt(sliderValue) : 0;
     clock.restore(elapsed + transit, !!sentAt && !driving);
     history.replaceState(history.state, '', location.pathname + location.search);
   }
-  function showEpoch() {
-    panel.querySelector('#lunar-epoch-value').textContent = utcInputValue(clock.read().epoch).replace('T', ' ');
+  function showStart() {
+    const days = Number(daySlider.value);
+    const dayText = `${days} Earth ${days === 1 ? 'day' : 'days'}`;
+    const lunarText = `${(days / LUNAR_SOLAR_DAY).toFixed(3)} lunar solar days`;
+    dayLabel.textContent = world === 'earth' ? 'Earth time' : 'Moon time';
+    dayOffset.textContent = world === 'earth' ? lunarText : dayText;
+    daySlider.setAttribute('aria-valuetext', world === 'earth' ? `${dayText}, ${lunarText}` : dayText);
+    startTime.dateTime = `${utcInputValue(clock.read().epoch)}Z`;
+    startTime.textContent = startTime.dateTime.slice(0, -1).replace('T', ' ');
   }
-  showEpoch();
+  showStart();
 
   let locationData = {};
   function render() {
@@ -372,31 +366,15 @@ export function mountLunarSimulation(panel, {
     render();
   }
 
-  dateButton.addEventListener('click', () => {
-    [date.value, exact.value] = utcInputValue(clock.read().epoch).split('T');
-    choices.value = '';
-    dialog.showModal();
-  });
-  panel.querySelector('[data-lunar-cancel]').addEventListener('click', () => dialog.close());
-
-  function chooseEpoch(time) {
-    if (!date.reportValidity()) return;
-    const nextEpoch = Date.parse(`${date.value}T${time}Z`);
-    if (!Number.isFinite(nextEpoch)) return;
+  daySlider.addEventListener('input', () => {
+    const nextEpoch = baseEpoch + Number(daySlider.value) * DAY_MS;
+    if (nextEpoch === clock.read().epoch) return;
     const running = clock.running;
     clock.reset(nextEpoch);
     if (running) clock.start();
-    dialog.close();
-    showEpoch();
+    showStart();
     onEpochChange?.();
     render();
-  }
-  choices.addEventListener('change', () => {
-    if (choices.value) chooseEpoch(choices.value);
-  });
-  dialog.querySelector('form').addEventListener('submit', event => {
-    event.preventDefault();
-    chooseEpoch(exact.value);
   });
   slider.addEventListener('input', () => {
     clock.setSpeed(speedAt(Number(slider.value)));
@@ -429,6 +407,10 @@ export function mountLunarSimulation(panel, {
     clock,
     pause,
     reset,
+    setWorld(selectedWorld) {
+      world = selectedWorld;
+      showStart();
+    },
     updateRoverPosition(lat, lon, slope, slopeLabel) {
       locationData = { lat, lon, slope, slopeLabel };
       return render();
@@ -436,7 +418,7 @@ export function mountLunarSimulation(panel, {
     linkTo(href) {
       const url = new URL(href, location.href);
       const { epoch, elapsed, running } = clock.read();
-      url.hash = new URLSearchParams({ lunar: [epoch, elapsed, slider.value, running ? Date.now() : 0].join(',') });
+      url.hash = new URLSearchParams({ lunar: [epoch, elapsed, slider.value, running ? Date.now() : 0, daySlider.value].join(',') });
       return url.href;
     },
   };
