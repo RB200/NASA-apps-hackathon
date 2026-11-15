@@ -12,7 +12,7 @@ const $ = id => document.getElementById(id);
 const traverse = mountTraverse({
   refocus: () => { if (walkMode) renderer.domElement.focus({ preventScroll: true }); },
 });
-const assetVersion = 'moon-sites-1';
+const assetVersion = 'moon-terrain-despike-1';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -156,7 +156,35 @@ async function readGrid(descriptor) {
   const data = new Int16Array(expected / 2);
   const view = new DataView(buffer);
   for (let i = 0; i < data.length; i++) data[i] = view.getInt16(i * 2, true);
+  if (descriptor.body !== 'earth') {
+    removeLunarElevationSpikes(data, descriptor);
+  }
   return data;
+}
+
+// Remove isolated LOLA samples that jump sharply above or below their local terrain.
+// Require the surrounding samples to agree so genuine ridges and crater rims remain intact.
+function removeLunarElevationSpikes(data, descriptor) {
+  const { width, height } = descriptor;
+  const spacing = pixelSize(descriptor) * descriptor.stridePixels;
+  const threshold = Math.max(40, spacing * 0.65) / heightScale(descriptor);
+  const neighborSpreadLimit = threshold * 1.25;
+  const source = data.slice();
+  for (let row = 1; row < height - 1; row++) {
+    for (let col = 1; col < width - 1; col++) {
+      const index = row * width + col;
+      const neighbors = [
+        source[index - width - 1], source[index - width], source[index - width + 1],
+        source[index - 1], source[index + 1],
+        source[index + width - 1], source[index + width], source[index + width + 1],
+      ].sort((a, b) => a - b);
+      const median = neighbors[4];
+      if (neighbors[8] - neighbors[0] <= neighborSpreadLimit &&
+          Math.abs(source[index] - median) > threshold) {
+        data[index] = median;
+      }
+    }
+  }
 }
 
 function gridStats(data, scale) {
