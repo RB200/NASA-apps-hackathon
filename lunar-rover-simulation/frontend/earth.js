@@ -13,11 +13,6 @@ export function flagEmoji(cc) {
     ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 }
 
-// Moon views in terrain.js that show a given Artemis region. Regions without their own Moon tile
-// fall back to the crater view and say so in the HUD.
-const MOON_VIEW_FOR_REGION = { 'de-gerlache-rim-2': 'detail' };
-const FALLBACK_MOON_VIEW = 'crater';
-
 // Artemis III candidate regions (same as frontend/regions.js): name and Moon centre.
 export const REGIONS = {
   'cabeus-b-peak': { name: 'Peak near Cabeus B', lat: -83.6, lon: -68.6 },
@@ -79,11 +74,11 @@ export async function loadEarthMetadata(version) {
 }
 
 export function moonViewForRegion(region) {
-  return MOON_VIEW_FOR_REGION[region] ?? FALLBACK_MOON_VIEW;
+  return region in REGIONS ? 'moon-site' : 'crater';
 }
 
 export function hasOwnMoonTile(region) {
-  return region in MOON_VIEW_FOR_REGION;
+  return region in REGIONS;
 }
 
 export function earthDescriptor(md, region, chosen = null) {
@@ -119,20 +114,46 @@ function earthColor(t) {
 }
 export const earthColorLut = Array.from({ length: 256 }, (_, i) => earthColor(i / 255));
 
+const mixColor = (a, b, amount) => new THREE.Color(a).lerp(new THREE.Color(b), amount);
+const smoothstep = (min, max, value) => {
+  const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+export function updateEarthLighting(scene, elevation, { hemi, keyLight, fillLight }) {
+  const day = smoothstep(-6, 8, elevation);
+  const twilight = smoothstep(-18, 0, elevation);
+  const sky = mixColor('#14243a', '#43536c', twilight).lerp(new THREE.Color('#9dbfe0'), day);
+  const horizon = mixColor('#202a38', '#d17f5e', twilight).lerp(new THREE.Color('#b9d1e8'), day);
+  scene.background.copy(sky);
+  if (scene.fog) scene.fog.color.copy(horizon);
+  if (hemi) {
+    hemi.color.copy(sky);
+    hemi.groundColor.copy(mixColor('#29384a', '#6d5843', day));
+    hemi.intensity = 0.75 + 0.70 * day + 0.18 * twilight;
+  }
+  if (keyLight) {
+    keyLight.intensity = 4.0 * smoothstep(-4, 6, elevation);
+    keyLight.color.copy(mixColor('#d9e4f1', '#fff0d7', day));
+  }
+  if (fillLight) fillLight.intensity = 0.18 + 0.16 * day + 0.04 * twilight;
+}
+
 // Sky, fog, light colours and the few labels that say "Moon"/"LOLA". Moon values are captured once
 // so switching back restores exactly what terrain.js set up.
 let moonLook = null;
-export function applyWorld(scene, body) {
+export function applyWorld(scene, body, { keyLight, fillLight } = {}) {
   const hemi = scene.children.find(o => o.isHemisphereLight);
   const label = document.querySelector('.walk-title b');
   const mark = document.querySelector('.top-mark');
   const coverage = document.getElementById('coverage-note');
   const intro = document.querySelector('.intro');
   moonLook ??= {
-    background: scene.background.clone(),
+    background: scene.background,
     sky: hemi?.color.clone(), ground: hemi?.groundColor.clone(), intensity: hemi?.intensity,
     label: label?.textContent, mark: mark?.innerHTML, coverage: coverage?.textContent,
-    intro: intro?.innerHTML,
+    intro: intro?.innerHTML, keyIntensity: keyLight?.intensity,
+    keyColor: keyLight?.color.clone(), fillIntensity: fillLight?.intensity,
   };
   if (intro) intro.innerHTML = body === 'earth'
     ? '<div class="eyebrow">EARTH ANALOG · TERRAIN STUDY</div><h1>Drive the<br><em>Moon on Earth.</em></h1>' +
@@ -140,7 +161,7 @@ export function applyWorld(scene, body) {
     : moonLook.intro;
   const earth = body === 'earth';
   document.querySelector('.app-shell')?.classList.toggle('earth-mode', earth);
-  scene.background = earth ? new THREE.Color('#9dbfe0') : moonLook.background.clone();
+  scene.background = earth ? new THREE.Color('#9dbfe0') : moonLook.background;
   // Light haze only far away: the overview camera sits ~30 km out, drive mode looks ~5 km ahead.
   scene.fog = earth ? new THREE.Fog('#b9d1e8', 30000, 140000) : null;
   if (hemi) {
@@ -148,6 +169,11 @@ export function applyWorld(scene, body) {
     hemi.groundColor.copy(earth ? new THREE.Color('#6d5843') : moonLook.ground);
     hemi.intensity = earth ? 1.6 : moonLook.intensity;
   }
+  if (keyLight) {
+    keyLight.intensity = earth ? 4.0 : moonLook.keyIntensity;
+    if (moonLook.keyColor) keyLight.color.copy(earth ? new THREE.Color('#fff0d7') : moonLook.keyColor);
+  }
+  if (fillLight) fillLight.intensity = earth ? 0.34 : moonLook.fillIntensity;
   if (label) label.textContent = earth ? 'EARTH ROVER' : moonLook.label;
   if (mark) mark.innerHTML = earth
     ? '<span class="live-dot"></span> NASA SRTM <span class="top-divider">/</span> 30 M SOURCE'

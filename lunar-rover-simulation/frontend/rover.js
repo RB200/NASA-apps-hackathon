@@ -109,7 +109,7 @@ function separateWheels(body) {
 }
 
 export async function loadRover() {
-  const decoder = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/');
+  const decoder = new DRACOLoader().setDecoderPath('./assets/draco/');
   let model;
   try {
     model = (await new GLTFLoader().setDRACOLoader(decoder)
@@ -125,6 +125,23 @@ export async function loadRover() {
   body.rotation.order = 'YXZ';
   body.add(model);
   body.userData.wheels = separateWheels(body);
+  body.userData.headlights = [-0.85, 0.85].map(x => {
+    const lensMaterial = new THREE.MeshStandardMaterial({
+      color: '#fff7e6', emissive: '#ffd58a', emissiveIntensity: 0, roughness: 0.3,
+    });
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), lensMaterial);
+    lens.position.set(x, 1.55, -1.48);
+    body.add(lens);
+
+    const target = new THREE.Object3D();
+    target.position.set(x * 0.72, -0.25, -30);
+    body.add(target);
+    const light = new THREE.SpotLight(0xffe9bd, 0, 65, Math.PI / 7, 0.65, 2);
+    light.position.copy(lens.position);
+    light.target = target;
+    body.add(light);
+    return { light, lensMaterial };
+  });
   return body;
 }
 
