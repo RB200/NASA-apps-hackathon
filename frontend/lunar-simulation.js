@@ -85,7 +85,7 @@ const LUNAR_TERMS = [
   [25.053, 473327.79642, 0.0043, -0.0009, -0.0044],
 ];
 
-function solarGeometry(utc, lat, lon) {
+export function solarGeometry(utc, lat, lon) {
   const days = (utc - J2000) / DAY_MS;
   const centuries = days / 36525;
   // USNO approximate geocentric Sun (aa.usno.navy.mil/faq/sun_approx).
@@ -121,6 +121,7 @@ function solarGeometry(utc, lat, lon) {
   const up = cos(lat) * horizontal + sin(lat) * pole;
   return {
     east: -sin(angle) * node + cos(angle) * equator,
+    solarHour: 12 + Math.atan2(sin(angle) * node - cos(angle) * equator, horizontal) / DEG / 15,
     north: -sin(lat) * horizontal + cos(lat) * pole,
     up,
     elevation: Math.asin(Math.max(-1, Math.min(1, up))) / DEG,
@@ -142,7 +143,7 @@ export function earthSolarGeometry(utc, lat, lon) {
   const dec = Math.asin(sin(obliquity) * sin(eclipticLongitude)) / DEG;
   const gmst = 280.46061837 + 360.98564736629 * days + 0.000387933 * centuries ** 2
     - centuries ** 3 / 38710000;
-  const hourAngle = ((gmst + lon - ra + 540) % 360 - 180) * DEG;
+  const hourAngle = (((gmst + lon - ra + 180) % 360 + 360) % 360 - 180) * DEG;
   const latitude = lat * DEG;
   const declination = dec * DEG;
   const east = -Math.cos(declination) * Math.sin(hourAngle);
@@ -152,7 +153,18 @@ export function earthSolarGeometry(utc, lat, lon) {
     + Math.cos(latitude) * Math.cos(declination) * Math.cos(hourAngle);
   const elevation = Math.asin(Math.max(-1, Math.min(1, up))) / DEG;
   const distanceAu = 1.00014 - 0.01671 * cos(anomaly) - 0.00014 * cos(2 * anomaly);
-  return { east, north, up, elevation, irradiance: 1361 * Math.max(0, up) / distanceAu ** 2 };
+  return { east, north, up, elevation, solarHour: 12 + hourAngle / DEG / 15,
+    irradiance: 1361 * Math.max(0, up) / distanceAu ** 2 };
+}
+
+export function utcAtSolarHour(world, utc, lat, lon, hour) {
+  const geometry = world === 'earth' ? earthSolarGeometry : solarGeometry;
+  const day = world === 'earth' ? DAY_MS : LUNAR_SOLAR_DAY * DAY_MS;
+  for (let i = 0; i < 4; i++) {
+    const difference = ((hour - geometry(utc, lat, lon).solarHour + 36) % 24) - 12;
+    utc += difference * day / 24;
+  }
+  return Math.round(utc);
 }
 
 export function lunarEnvironment(utc, lat, lon) {
@@ -441,22 +453,23 @@ export function mountLunarSimulation(panel, {
     clock,
     pause,
     reset,
-    setWorld(selectedWorld, location = null) {
+    setWorld(selectedWorld, location, hour = 6) {
       world = selectedWorld;
+      const { lat, lon } = location;
+      const utc = clock.read().utc;
+      const selectedEpoch = utcAtSolarHour(world, utc, lat, lon, hour);
       if (world === 'earth') {
-        const lon = Number.isFinite(location?.lon) ? location.lon : 0;
-        const utc = clock.read().utc;
-        baseEpoch = Math.floor((utc + lon * 240_000) / DAY_MS) * DAY_MS - lon * 240_000;
+        baseEpoch = selectedEpoch - hour * 3_600_000;
         daySlider.max = '24';
         daySlider.step = '0.5';
-        daySlider.value = '0';
-        clock.reset(baseEpoch);
+        daySlider.value = String(hour);
       } else {
         daySlider.max = String(START_DAY_RANGE);
         daySlider.step = String(START_DAY_STEP);
         daySlider.value = '0';
-        baseEpoch = clock.read().epoch;
+        baseEpoch = selectedEpoch;
       }
+      clock.reset(selectedEpoch);
       showStart();
     },
     updateRoverPosition(lat, lon, slope, slopeLabel) {

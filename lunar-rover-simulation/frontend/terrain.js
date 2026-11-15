@@ -4,8 +4,8 @@ import { terrainIndices } from './terrain-chunks.mjs';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=lunar-skybox-headlights-1';
-import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=drive-velocity';
+  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=preview-time';
+import { mountLunarSimulation, earthSolarGeometry, solarGeometry } from '../../frontend/lunar-simulation.js?v=preview-time';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -50,6 +50,9 @@ try {
 }
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 2, 900000);
 const controls = new OrbitControls(camera, renderer.domElement);
+let previewNeedsRender = true;
+controls.addEventListener('change', () => { previewNeedsRender = true; });
+renderer.domElement.addEventListener('webglcontextrestored', () => { previewNeedsRender = true; });
 controls.enableDamping = true;
 controls.dampingFactor = 0.055;
 controls.minDistance = 25;
@@ -131,6 +134,44 @@ const moonRegionStats = earthMetadata ? await loadMoonRegionStats() : null;
 let lastMoonView = 'detail';
 let refreshWorldToggle = null; // set once the Earth controls are mounted (end of file)
 const isEarth = () => viewMode === 'earth';
+const previewTime = $('preview-time');
+let previewClockKey;
+let previewWorld;
+function previewLocation() {
+  const descriptor = viewData.descriptor;
+  return { lat: descriptor.centerLatitude ?? -90, lon: descriptor.centerLongitude ?? 0 };
+}
+
+function showPreviewTime() {
+  previewNeedsRender = true;
+  const { lat, lon } = previewLocation();
+  const utc = simulation.clock.read().utc;
+  const earth = isEarth();
+  const sun = earth ? earthSolarGeometry(utc, lat, lon) : solarGeometry(utc, lat, lon);
+  const minutes = (Math.round(sun.solarHour * 60) + 1440) % 1440;
+  const label = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  $('preview-time-value').textContent = label;
+  previewTime.value = String(Math.min(23.5, Math.round(minutes / 30) / 2));
+  previewTime.setAttribute('aria-valuetext', label);
+  keyLight.target.position.set(0, 0, 0);
+  if (earth) {
+    keyLight.position.set(sun.east, sun.up, -sun.north).multiplyScalar(36);
+    updateEarthLighting(scene, sun.elevation, { hemi: scene.children.find(o => o.isHemisphereLight), keyLight, fillLight });
+  } else {
+    const longitude = THREE.MathUtils.degToRad(lon);
+    keyLight.position.set(
+      sun.east * Math.cos(longitude) + sun.north * Math.sin(longitude),
+      sun.up,
+      sun.east * Math.sin(longitude) - sun.north * Math.cos(longitude),
+    ).multiplyScalar(36);
+    keyLight.intensity = sun.up > 0 ? 4 : 0;
+  }
+}
+previewTime.addEventListener('input', () => {
+  if (!currentView || walkMode || previewClockKey !== viewData?.key) return;
+  simulation.setWorld(previewWorld, previewLocation(), Number(previewTime.value));
+  showPreviewTime();
+});
 const pixelSize = descriptor => descriptor.pixelSizeM ?? metadata.pixelSizeM;
 const heightScale = descriptor => descriptor.heightScaleM ?? metadata.heightScaleM;
 const atlasLink = document.querySelector('.back-link');
@@ -230,13 +271,13 @@ let lunarTexturesPromise;
 function loadLunarTextures() {
   if (!lunarTexturesPromise) {
     const loader = new THREE.TextureLoader();
-    lunarTexturesPromise = Promise.all(['color', 'ao', 'normal', 'roughness'].map(async name => {
+    lunarTexturesPromise = Promise.all(['color', 'normal'].map(async name => {
       const texture = await loader.loadAsync(`./assets/moon-ground-${name}.webp`);
       texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       if (name === 'color') texture.colorSpace = THREE.SRGBColorSpace;
       return texture;
-    })).then(([map, aoMap, normalMap, roughnessMap]) => ({ map, aoMap, normalMap, roughnessMap }))
+    })).then(([map, normalMap]) => ({ map, normalMap }))
       .catch(error => {
         lunarTexturesPromise = null;
         throw new Error(`Could not load lunar surface textures: ${error.message || 'image request failed'}`);
@@ -278,9 +319,7 @@ function varyLunarTextures(material) {
     for (const [chunk, sample, distantValue] of [
       // Mean linear color of moon-ground-color.webp.
       ['map_fragment', 'map, vMapUv', 'vec4(0.256, 0.239, 0.190, 1.0)'],
-      ['aomap_fragment', 'aoMap, vAoMapUv', 'vec4(1.0)'],
       ['normal_fragment_maps', 'normalMap, vNormalMapUv', 'vec4(0.5, 0.5, 1.0, 1.0)'],
-      ['roughnessmap_fragment', 'roughnessMap, vRoughnessMapUv', 'vec4(1.0)'],
     ]) {
       shader.fragmentShader = shader.fragmentShader.replace(`#include <${chunk}>`,
         THREE.ShaderChunk[chunk].replaceAll(`texture2D( ${sample} )`,
@@ -300,7 +339,8 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
   const positions = new Float32Array(width * height * 3);
   const colors = new Float32Array(width * height * 3);
   const colorUV = lunarTextures ? new Float32Array(width * height * 2) : null;
-  const lunarDetail = colorUV && spacing <= 20;
+  const lunar = descriptor.body !== 'earth';
+  const lunarDetail = lunar && spacing <= 20;
   const offsetX = descriptor.offsetX ?? 0;
   const offsetZ = descriptor.offsetZ ?? 0;
   for (let row = 0; row < height; row++) {
@@ -359,9 +399,8 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null,
       side: THREE.DoubleSide })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
   if (lunarTextures) varyLunarTextures(material);
-  const mesh = viewMode === 'overview' ? new THREE.Mesh(geometry, material)
-    : chunkSurface(geometry, material, width, height, spacing, cutout, Boolean(lunarTextures));
-  if (mesh.isGroup) geometry.dispose();
+  const mesh = chunkSurface(geometry, material, width, height, spacing, cutout, lunar);
+  geometry.dispose();
   return { mesh, positions, stats, spacing, width, height, midpoint };
 }
 
@@ -420,22 +459,26 @@ function chunkSurface(source, material, width, height, spacing, cutout, lunar) {
 }
 
 function updateTerrainDetail() {
+  const position = walkMode ? rover.position : camera.position;
   for (const layer of [surface, fineSurface]) {
     if (!layer?.isGroup) continue;
     const { detailRadius, materials } = layer.userData;
-    // Measure horizontally so a nearby high ridge stays detailed.
-    const x = (rover?.position.x ?? 0) - layer.position.x;
-    const z = (rover?.position.z ?? 0) - layer.position.z;
+    const x = position.x - layer.position.x;
+    const y = position.y - layer.position.y;
+    const z = position.z - layer.position.z;
     for (const chunk of layer.children) {
       const { full, distant } = chunk.userData;
       const bounds = full.boundingBox;
       const dx = Math.max(bounds.min.x - x, x - bounds.max.x, 0);
       const dz = Math.max(bounds.min.z - z, z - bounds.max.z, 0);
-      const distanceSquared = dx * dx + dz * dz;
+      // Nearby driving terrain stays detailed at any elevation. The preview
+      // also accounts for camera altitude when viewed from above.
+      const dy = walkMode ? 0 : Math.max(bounds.min.y - y, y - bounds.max.y, 0);
+      const distanceSquared = dx * dx + dy * dy + dz * dz;
       const threshold = chunk.geometry === full ? detailRadius * 1.2 : detailRadius;
-      const showDetail = !walkMode || distanceSquared <= threshold * threshold;
+      const showDetail = distanceSquared <= threshold * threshold;
       chunk.geometry = showDetail ? full : distant;
-      chunk.material = showDetail ? materials.near : materials.distant;
+      chunk.material = walkMode && showDetail ? materials.near : materials.distant;
       chunk.receiveShadow = walkMode && showDetail && distanceSquared <= 80 * 80;
     }
   }
@@ -716,10 +759,6 @@ function enterWalkMode(spawn = null) {
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
   const earth = isEarth();
-  simulation.setWorld(earth ? 'earth' : 'moon', earth ? {
-    lat: viewData?.descriptor.centerLatitude,
-    lon: viewData?.descriptor.centerLongitude,
-  } : null);
   driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
   $('walk-ground').closest('button').dataset.method = earth ? 'earthGround' : 'ground';
   simulation.clock.start();
@@ -757,6 +796,7 @@ function exitWalkMode() {
   $('walk-hud').hidden = true;
   driveTelemetry.hidden = true;
   simulation.pause();
+  showPreviewTime();
   $('walk-crosshair').hidden = true;
   if (currentView) frameView(currentView);
 }
@@ -803,6 +843,7 @@ function updateReadout(view, descriptor) {
 }
 
 function frameView(view) {
+  previewNeedsRender = true;
   if (viewMode === 'overview') {
     // Start just above the northern rim of the large basin in the overview,
     // looking diagonally across its floor toward the far rim.
@@ -901,7 +942,7 @@ function beginTraverse(x, z) {
 }
 
 let viewRequest = 0;
-async function showView(mode) {
+async function showView(mode, forDrive = walkMode) {
   const request = ++viewRequest;
   viewMode = mode;
   $('loading').classList.add('visible');
@@ -912,7 +953,7 @@ async function showView(mode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
-    const lunarTextures = mode === 'earth' ? null : await loadLunarTextures();
+    const lunarTextures = forDrive && mode !== 'earth' ? await loadLunarTextures() : null;
     if (request !== viewRequest) return false;
     const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}`
       : mode === 'moon-site' ? `moon:${earthRegion}` : mode;
@@ -933,6 +974,14 @@ async function showView(mode) {
     }
     if (mode !== 'earth') lastMoonView = mode;
     applyWorld(scene, mode === 'earth' ? 'earth' : 'moon', { keyLight, fillLight });
+    const world = mode === 'earth' ? 'earth' : 'moon';
+    if (previewClockKey !== key) {
+      const hour = world === previewWorld ? Number(previewTime.value) : 6;
+      simulation.setWorld(world, previewLocation(), hour);
+      previewClockKey = key;
+      previewWorld = world;
+    }
+    showPreviewTime();
     setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
     refreshWorldToggle?.();
     clearView();
@@ -992,7 +1041,7 @@ $('walk-button').addEventListener('click', async () => {
     verticalExaggeration = 1;
     $('exaggeration').value = 1;
     $('exag-value').textContent = '1×';
-    if (await showView(viewMode === 'overview' ? 'crater' : viewMode)) enterWalkMode();
+    if (await showView(viewMode === 'overview' ? 'crater' : viewMode, true)) enterWalkMode();
   } catch (error) {
     console.error(error);
     $('error-message').textContent = `The rover model could not load: ${error?.message ?? 'unknown loader error'}`;
@@ -1093,6 +1142,7 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  previewNeedsRender = true;
   if (walkMode) updateWalkCamera();
   else if (currentView) frameView(currentView);
 });
@@ -1143,6 +1193,8 @@ renderer.setAnimationLoop(() => {
     keyLight.position.copy(rover.position).add(earth ? sunOffset : driveSunOffset);
   } else if (!walkMode) {
     controls.update();
+    if (!previewNeedsRender) return;
+    previewNeedsRender = false;
   }
   updateTerrainDetail();
   renderer.render(scene, camera);
@@ -1159,7 +1211,7 @@ async function toggleWorld() {
     const spawn = driving ? { x: rover.position.x, z: rover.position.z, yaw: walkYaw } : null;
     const target = isEarth() ? (moonViewForRegion(earthRegion) ?? lastMoonView) : 'earth';
     if (driving) exitWalkMode();
-    if (!(await showView(target))) return;
+    if (!(await showView(target, driving))) return;
     if (driving) {
       const limitX = (currentView.width - 1) * currentView.spacing / 2 - 6;
       const limitZ = (currentView.height - 1) * currentView.spacing / 2 - 6;
@@ -1174,17 +1226,8 @@ async function toggleWorld() {
 
 if (earthMetadata) {
   const refresh = mountEarthControls(earthMetadata, {
-    region: earthRegion,
     onShowEarth: () => showView('earth'),
     onShowMoon: () => showView(moonViewForRegion(earthRegion)),
-    async onRegion(region) {
-      const driving = walkMode;
-      const mode = isEarth() ? 'earth' : moonViewForRegion(region);
-      if (driving) exitWalkMode();
-      earthRegion = region;
-      earthSite = null; // picker → that region's top match
-      if (await showView(mode) && driving) enterWalkMode();
-    },
     onToggle: toggleWorld,
   });
   if (!(earthRegion in earthMetadata.regions)) earthRegion = Object.keys(earthMetadata.regions)[0];

@@ -197,26 +197,17 @@ export function earthReadout($, view, descriptor) {
 // Simpler panel: region picker → big "Moon | Earth" switch → small "whole south pole" link.
 // The original view buttons stay in the page (hidden) so terrain.js keeps working unchanged.
 // Also: the "where are we" badge (flag + place) and the Moon/Earth switch in the drive HUD.
-export function mountEarthControls(md, { region, onShowEarth, onShowMoon, onRegion, onToggle }) {
+export function mountEarthControls(md, { onShowEarth, onShowMoon, onToggle }) {
   const panel = document.querySelector('.control-panel');
   const top = document.createElement('div');
   top.className = 'world-controls';
   top.innerHTML = `
-    <label class="earth-picker"><span>Artemis landing region</span><select id="earth-region"></select></label>
     <div class="world-switch" role="group" aria-label="Moon or Earth">
       <button type="button" data-world="moon">🌑 Moon</button>
       <button type="button" data-world="earth">🌍 Earth analog</button>
     </div>
     <button type="button" class="overview-link">See the whole lunar south pole →</button>`;
   panel.prepend(top);
-
-  const select = top.querySelector('select');
-  for (const [id, entry] of Object.entries(md.regions)) {
-    const site = md.sites[entry.site];
-    select.add(new Option(`${REGION_NAMES[id] ?? id}  →  ${flagEmoji(site.cc)} ${site.name} (${Math.round(entry.match)}%)`, id));
-  }
-  select.value = region in md.regions ? region : Object.keys(md.regions)[0];
-  select.addEventListener('change', () => onRegion(select.value));
 
   let earthNow = false;
   top.querySelectorAll('.world-switch button').forEach(button => button.addEventListener('click', () => {
@@ -246,7 +237,6 @@ export function mountEarthControls(md, { region, onShowEarth, onShowMoon, onRegi
     earthNow = earth;
     top.querySelectorAll('.world-switch button').forEach(b =>
       b.classList.toggle('active', (b.dataset.world === 'earth') === earth && view !== 'overview'));
-    select.value = current;
     toggle.innerHTML = earth ? '🌑 Switch to Moon <kbd>T</kbd>' : '🌍 Switch to Earth <kbd>T</kbd>';
     const entry = md.regions[current];
     const top_ = md.sites[entry.site];

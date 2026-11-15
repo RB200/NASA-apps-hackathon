@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#080d13" />
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
-  <link rel="stylesheet" href="terrain.css" />
-  <link rel="stylesheet" href="earth.css" />
+  <link rel="stylesheet" href="terrain.css?v=preview-time" />
+  <link rel="stylesheet" href="earth.css?v=preview-time" />
   <link rel="stylesheet" href="traverse.css?v=environment-1" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
@@ -53,6 +53,9 @@
         <div class="metric"><span class="metric-label">HIGHEST</span><strong id="max-height">—</strong><small class="height-ref">relative elevation</small></div>
         <div class="metric metric-wide"><span class="metric-label">HEIGHT RANGE</span><strong id="relief">—</strong><small>highest minus lowest point in this view</small></div>
       </div>
+
+      <label class="slider-label" for="preview-time"><span>Local solar time</span><output id="preview-time-value">06:00</output></label>
+      <input id="preview-time" type="range" min="0" max="23.5" step="0.5" value="6" />
 
       <button id="walk-button" class="walk-button"><span class="walk-button-mark" aria-hidden="true">↗</span> Drive inside the crater</button>
       <p class="walk-caption">Lunar rover · spawns inside the crater</p>
@@ -159,6 +162,6 @@
     </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=distant-terrain-lighting"></script>
+  <script type="module" src="terrain.js?v=lighter-lunar-textures"></script>
 </body>
 </html>
