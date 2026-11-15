@@ -1,0 +1,151 @@
+{
+  "body": "earth",
+  "gravity": 9.81,
+  "source": "NASA SRTMGL1 v003 (1 arc-second, ~30 m), resampled to a 30 m local grid",
+  "tileSizeKm": 15.36,
+  "sites": {
+    "andes-29.50s-69.40w": {
+      "file": "andes-29.50s-69.40w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -29.5,
+      "centerLongitude": -69.3968,
+      "name": "Andes",
+      "country": "San Juan, Argentina",
+      "near": "Rodeo (83 km)",
+      "minM": 2496,
+      "maxM": 6013
+    },
+    "altiplano-24.14s-68.11w": {
+      "file": "altiplano-24.14s-68.11w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -24.1407,
+      "centerLongitude": -68.1062,
+      "name": "Altiplano",
+      "country": "Antofagasta, Chile",
+      "near": "San Pedro de Atacama (137 km)",
+      "minM": 3214,
+      "maxM": 6216
+    },
+    "atacama-desert-20.50s-69.12w": {
+      "file": "atacama-desert-20.50s-69.12w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -20.5,
+      "centerLongitude": -69.1164,
+      "name": "Atacama Desert",
+      "country": "Tarapac\u00e1, Chile",
+      "near": "Pica (22 km)",
+      "minM": 1840,
+      "maxM": 3837
+    },
+    "andes-15.86s-73.69w": {
+      "file": "andes-15.86s-73.69w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -15.8593,
+      "centerLongitude": -73.6868,
+      "name": "Andes",
+      "country": "Arequipa, Peru",
+      "near": "Quicacha (29 km)",
+      "minM": 1394,
+      "maxM": 3050
+    },
+    "kunlun-mountains-36.14n-96.17e": {
+      "file": "kunlun-mountains-36.14n-96.17e-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": 36.1407,
+      "centerLongitude": 96.1663,
+      "name": "Kunlun Mountains",
+      "country": "Qinghai, China",
+      "near": "Golmud (117 km)",
+      "minM": 3564,
+      "maxM": 4954
+    },
+    "altiplano-25.68s-67.90w": {
+      "file": "altiplano-25.68s-67.90w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -25.6797,
+      "centerLongitude": -67.8987,
+      "name": "Altiplano",
+      "country": "Catamarca, Argentina",
+      "near": "Antofagasta de la Sierra (65 km)",
+      "minM": 3410,
+      "maxM": 5784
+    },
+    "atacama-desert-25.14s-70.30w": {
+      "file": "atacama-desert-25.14s-70.30w-30m-i16.bin",
+      "width": 512,
+      "height": 512,
+      "stridePixels": 1,
+      "pixelSizeM": 30.0,
+      "heightScaleM": 1.0,
+      "centerLatitude": -25.1407,
+      "centerLongitude": -70.3015,
+      "name": "Atacama Desert",
+      "country": "Antofagasta, Chile",
+      "near": "Taltal (35 km)",
+      "minM": 787,
+      "maxM": 2096
+    }
+  },
+  "regions": {
+    "cabeus-b-peak": {
+      "site": "andes-29.50s-69.40w",
+      "match": 57.4
+    },
+    "de-gerlache-rim-2": {
+      "site": "altiplano-24.14s-68.11w",
+      "match": 67.1
+    },
+    "haworth": {
+      "site": "atacama-desert-20.50s-69.12w",
+      "match": 87.5
+    },
+    "malapert-massif": {
+      "site": "andes-29.50s-69.40w",
+      "match": 64.7
+    },
+    "mons-mouton": {
+      "site": "altiplano-24.14s-68.11w",
+      "match": 56.8
+    },
+    "mons-mouton-plateau": {
+      "site": "andes-15.86s-73.69w",
+      "match": 83.2
+    },
+    "nobile-rim-1": {
+      "site": "kunlun-mountains-36.14n-96.17e",
+      "match": 19.8
+    },
+    "nobile-rim-2": {
+      "site": "altiplano-25.68s-67.90w",
+      "match": 76.9
+    },
+    "slater-plain": {
+      "site": "atacama-desert-25.14s-70.30w",
+      "match": 94.1
+    }
+  }
+}
