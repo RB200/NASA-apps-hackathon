@@ -3,7 +3,7 @@ import { sampleMoon, SAMPLE_EARTH } from './sample.js';
 import { mountLunarSimulation } from './lunar-simulation.js';
 
 const API_BASE = 'http://localhost:8000'; // FastAPI backend (build step 4)
-const TEX = 'https://unpkg.com/globe.gl@2.46.2/example/moon-landing-sites/';
+const MOON_KIT = 'https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/';
 const HOME_VIEW = { lat: -86.5, lng: 20, altitude: 0.3 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
 const C = Object.fromEntries(CONSTRAINTS.map(c => [c.key, c]));
@@ -76,8 +76,8 @@ const boxes = REGIONS.map(r => ({ region: r, geometry: boxPolygon(r) }));
 // ---------- Globe ----------
 let selected = null;
 const globe = new Globe($('globe'))
-  .globeImageUrl(TEX + 'lunar_surface.jpg')
-  .bumpImageUrl(TEX + 'lunar_bumpmap.jpg')
+  .globeImageUrl(MOON_KIT + 'lroc_color_2k.jpg')
+  .bumpImageUrl(MOON_KIT + 'ldem_3_8bit.jpg')
   .backgroundImageUrl('https://unpkg.com/three-globe@2.41.0/example/img/night-sky.png')
   .showGraticules(true)
   .showAtmosphere(false)
