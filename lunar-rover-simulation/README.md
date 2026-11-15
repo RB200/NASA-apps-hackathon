@@ -28,3 +28,15 @@ The same rover can drive the best Earth analog of each Artemis III region (from 
 - Earth tiles: `frontend/assets/earth/` (512 × 512 at 30 m = 15.36 km, int16 metres, NASA SRTMGL1 v003), built by `data_prep/prepare_earth_tiles.py` from SRTMGL1 tiles in `../data_prep/cache/srtmgl1/`.
 - Code: `frontend/earth.js` + `frontend/earth.css`. Hooks in `terrain.js` (per-tile pixel size/height scale, Earth colours, no lunar craterlets, Moon⇄Earth toggle, lunar telemetry hidden on Earth) and `rover.js` (`setGravity`; suspension scales with gravity, unchanged on the Moon).
 - Moon-site tiles are described in `frontend/assets/moon-sites/moon-sites.json`. The shared Artemis region selector switches the Moon terrain when in lunar view and the Earth analog when in Earth view.
+
+## Live Terrain Traverse Analysis
+
+Choose **de Gerlache Rim 2**, drive on either world, then open **Live Terrain Comparison**. The other tile is sampled from its center along the same path in local east/north metres. Both profiles start at zero, sample every 30 m of horizontal travel, and include the final valid endpoint. The comparison uses raw DEM heights: Earth at 30 m, the dedicated lunar site at 20 m, or the 5 m lunar tile if driving in the De Gerlache detail view.
+
+Select **Finish test** for two aligned overhead maps, the elevation profiles, and route statistics. **R** starts a new recording. Switching worlds or exiting drive ends the current recording; **View last report** can reopen the latest result while the page stays open. When a route leaves either tile, the report marks it incomplete and stops the paired comparison at the boundary. Other regions still support driving.
+
+Run the sampling and alignment tests from the repository root:
+
+```bash
+node --test lunar-rover-simulation/tests/traverse.test.mjs
+```
