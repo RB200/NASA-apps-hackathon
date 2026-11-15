@@ -226,42 +226,65 @@ function terrainNoise(x, z, size) {
     mix(terrainHash(ix, iz + 1), terrainHash(ix + 1, iz + 1), smooth(u)), smooth(v));
 }
 
-const colorTextureSize = 256;
 const colorTileMeters = 24;
-const colorPixels = new Uint8Array(colorTextureSize ** 2 * 4);
-
-function tiledColorNoise(x, z, cells, seed) {
-  const u = x * cells / colorTextureSize, v = z * cells / colorTextureSize;
-  const col = Math.floor(u), row = Math.floor(v);
-  const smooth = t => t * t * (3 - 2 * t);
-  const mix = THREE.MathUtils.lerp;
-  const hash = (i, j) => terrainHash(i % cells, j % cells, seed);
-  return mix(mix(hash(col, row), hash(col + 1, row), smooth(u - col)),
-    mix(hash(col, row + 1), hash(col + 1, row + 1), smooth(u - col)), smooth(v - row));
-}
-
-for (let z = 0; z < colorTextureSize; z++) {
-  for (let x = 0; x < colorTextureSize; x++) {
-    const patches = tiledColorNoise(x, z, 10, 3917);
-    const flecks = tiledColorNoise(x, z, 72, 1279);
-    const tint = tiledColorNoise(x, z, 17, 7927) - 0.5;
-    const shade = 0.37 + 0.43 * patches + 0.19 * flecks;
-    const index = 4 * (z * colorTextureSize + x);
-    colorPixels[index] = Math.round(255 * shade);
-    colorPixels[index + 1] = Math.round(255 * shade * (0.98 - 0.03 * tint));
-    colorPixels[index + 2] = Math.round(255 * shade * (0.95 - 0.12 * tint));
-    colorPixels[index + 3] = 255;
+let lunarTexturesPromise;
+function loadLunarTextures() {
+  if (!lunarTexturesPromise) {
+    const loader = new THREE.TextureLoader();
+    lunarTexturesPromise = Promise.all(['color', 'ao', 'normal', 'roughness'].map(async name => {
+      const texture = await loader.loadAsync(`./assets/moon-ground-${name}.webp`);
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      if (name === 'color') texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    })).then(([map, aoMap, normalMap, roughnessMap]) => ({ map, aoMap, normalMap, roughnessMap }))
+      .catch(error => {
+        lunarTexturesPromise = null;
+        throw new Error(`Could not load lunar surface textures: ${error.message || 'image request failed'}`);
+      });
   }
+  return lunarTexturesPromise;
 }
-const lunarColorMap = new THREE.DataTexture(colorPixels, colorTextureSize, colorTextureSize);
-lunarColorMap.wrapS = lunarColorMap.wrapT = THREE.RepeatWrapping;
-lunarColorMap.magFilter = THREE.LinearFilter;
-lunarColorMap.minFilter = THREE.LinearMipmapLinearFilter;
-lunarColorMap.generateMipmaps = true;
-lunarColorMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-lunarColorMap.needsUpdate = true;
 
-function createSurface(data, descriptor, heightOrigin = null, colorRange = null) {
+function varyLunarTextures(material) {
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+      vec2 lunarOffset(vec2 cell) {
+        return fract(sin(vec2(dot(cell, vec2(127.1, 311.7)),
+                              dot(cell, vec2(269.5, 183.3)))) * 43758.5453);
+      }
+
+      vec4 sampleLunarTexture(sampler2D tex, vec2 uv) {
+        // Blend offset samples on a triangular grid, using unshifted gradients for mipmapping.
+        vec2 grid = vec2(uv.x - uv.y * 0.577350269, uv.y * 1.154700538);
+        vec2 cell = floor(grid);
+        vec2 f = fract(grid);
+        float upper = step(1.0, f.x + f.y);
+        vec2 a = cell + vec2(upper);
+        vec2 b = cell + mix(vec2(1.0, 0.0), vec2(0.0, 1.0), upper);
+        vec2 c = cell + mix(vec2(0.0, 1.0), vec2(1.0, 0.0), upper);
+        vec3 weights = mix(vec3(1.0 - f.x - f.y, f.x, f.y),
+                           vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y), upper);
+        weights = weights * weights * (3.0 - 2.0 * weights);
+        weights /= weights.x + weights.y + weights.z;
+        vec2 dx = dFdx(uv), dy = dFdy(uv);
+        return textureGrad(tex, uv + lunarOffset(a), dx, dy) * weights.x
+             + textureGrad(tex, uv + lunarOffset(b), dx, dy) * weights.y
+             + textureGrad(tex, uv + lunarOffset(c), dx, dy) * weights.z;
+      }`);
+    for (const [chunk, sample] of [
+      ['map_fragment', 'map, vMapUv'],
+      ['aomap_fragment', 'aoMap, vAoMapUv'],
+      ['normal_fragment_maps', 'normalMap, vNormalMapUv'],
+      ['roughnessmap_fragment', 'roughnessMap, vRoughnessMapUv'],
+    ]) {
+      shader.fragmentShader = shader.fragmentShader.replace(`#include <${chunk}>`,
+        THREE.ShaderChunk[chunk].replaceAll(`texture2D( ${sample} )`, `sampleLunarTexture( ${sample} )`));
+    }
+  };
+}
+
+function createSurface(data, descriptor, heightOrigin = null, colorRange = null, lunarTextures = null) {
   const { width, height } = descriptor;
   const spacing = pixelSize(descriptor) * descriptor.stridePixels;
   const stats = gridStats(data, heightScale(descriptor));
@@ -271,7 +294,8 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
   const colorMax = colorRange?.max ?? stats.max;
   const positions = new Float32Array(width * height * 3);
   const colors = new Float32Array(width * height * 3);
-  const colorUV = spacing <= 20 ? new Float32Array(width * height * 2) : null;
+  const colorUV = lunarTextures ? new Float32Array(width * height * 2) : null;
+  const lunarDetail = colorUV && spacing <= 20;
   const offsetX = descriptor.offsetX ?? 0;
   const offsetZ = descriptor.offsetZ ?? 0;
   for (let row = 0; row < height; row++) {
@@ -288,11 +312,13 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
       if (colorUV) {
         colorUV[2 * i] = x / colorTileMeters;
         colorUV[2 * i + 1] = z / colorTileMeters;
+      }
+      if (lunarDetail) {
         const patches = terrainNoise(x + 811, z, 110) - 0.5;
         const mottling = terrainNoise(x - 233, z + 571, spacing * 3) - 0.5;
         const tint = terrainNoise(x + 491, z - 319, 60) - 0.5;
-        const brightness = 0.075 + 0.10 * THREE.MathUtils.clamp(t, 0, 1) +
-          0.040 * patches + 0.030 * mottling;
+        const brightness = 0.15 + 0.20 * THREE.MathUtils.clamp(t, 0, 1) +
+          0.080 * patches + 0.060 * mottling;
         colors[3 * i] = brightness;
         colors[3 * i + 1] = brightness * (0.97 - 0.035 * tint);
         colors[3 * i + 2] = brightness * (0.94 - 0.14 * tint);
@@ -323,10 +349,11 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
   if (colorUV) geometry.setAttribute('uv', new THREE.BufferAttribute(colorUV, 2));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
-  // Diffuse lighting keeps the dust matte even under grazing sunlight.
-  const material = colorUV
-    ? new THREE.MeshLambertMaterial({ vertexColors: true, map: lunarColorMap, side: THREE.DoubleSide })
+  const material = lunarTextures
+    ? new THREE.MeshStandardMaterial({ vertexColors: true, ...lunarTextures, roughness: 1, metalness: 0,
+      side: THREE.DoubleSide })
     : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.02, side: THREE.DoubleSide });
+  if (lunarTextures) varyLunarTextures(material);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   return { mesh, stats, spacing, width, height, midpoint };
@@ -745,6 +772,8 @@ async function showView(mode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
+    const lunarTextures = mode === 'earth' ? null : await loadLunarTextures();
+    if (request !== viewRequest) return false;
     const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}`
       : mode === 'moon-site' ? `moon:${earthRegion}` : mode;
     if (!viewData || viewData.key !== key) {
@@ -766,13 +795,13 @@ async function showView(mode) {
     setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
     refreshWorldToggle?.();
     clearView();
-    const view = createSurface(viewData.data, viewData.descriptor);
+    const view = createSurface(viewData.data, viewData.descriptor, null, null, lunarTextures);
     viewData.positions = view.mesh.geometry.attributes.position.array;
     currentView = view;
     surface = view.mesh;
     scene.add(surface);
     if (viewData.fine) {
-      const detail = createSurface(viewData.fine.data, viewData.fine.descriptor, view.midpoint, view.stats);
+      const detail = createSurface(viewData.fine.data, viewData.fine.descriptor, view.midpoint, view.stats, lunarTextures);
       fineSurface = detail.mesh;
       viewData.fine.positions = fineSurface.geometry.attributes.position.array;
       fineSurface.position.x = viewData.fine.descriptor.offsetX ?? 0;
@@ -792,7 +821,8 @@ async function showView(mode) {
   } catch (error) {
     if (request !== viewRequest) return false;
     console.error(error);
-    $('error-message').textContent = mode === 'earth' && earthSite
+    $('error-message').textContent = error?.message?.startsWith('Could not load lunar surface textures:')
+      ? error.message : mode === 'earth' && earthSite
       ? `Could not load elevation for ${earthSite.name}. Make sure the backend is running and elevation data is available for this location. ${error.message}`
       : 'The elevation tile could not be loaded. Serve this folder over HTTP and check that the assets are present.';
     $('error-message').hidden = false;
