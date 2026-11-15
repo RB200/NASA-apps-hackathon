@@ -1,9 +1,7 @@
 import { REGIONS, CONSTRAINTS, MOON_RADIUS_KM } from './regions.js';
 import { sampleMoon, SAMPLE_EARTH } from './sample.js';
-import { mountLunarSimulation } from './lunar-simulation.js';
 
 const API_BASE = 'http://localhost:8000'; // FastAPI backend (build step 4)
-const HOME_VIEW = { lat: -86.5, lng: 20, altitude: 0.3 };
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer';
 const C = Object.fromEntries(CONSTRAINTS.map(c => [c.key, c]));
 const $ = id => document.getElementById(id);
@@ -11,259 +9,108 @@ const $ = id => document.getElementById(id);
 const flag = cc => /^[A-Za-z]{2}$/.test(cc ?? '')
   ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
 
-const telemetryPanel = $('lunar-telemetry');
-telemetryPanel.open = matchMedia('(min-width: 761px)').matches;
-const simulation = mountLunarSimulation(telemetryPanel, { coordinateDigits: 1 });
-let regionMeasurements;
-
-function updateRegionTelemetry() {
-  simulation.updateRoverPosition(selected?.lat, selected?.lon, regionMeasurements?.[selected?.id]?.meanSlope);
-}
-
-// Read the same regional measurements used by the matcher. The static file
-// also works when serving the repository root with the API offline.
-async function loadRegionMeasurements() {
-  try {
-    const response = await fetch(`${API_BASE}/regions`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    regionMeasurements = (await response.json()).regions;
-  } catch {
-    try {
-      const response = await fetch(new URL('../backend/data/moon_regions.json', import.meta.url));
-      if (response.ok) regionMeasurements = await response.json();
-    } catch {
-      // Leave the slope unavailable when neither source is reachable.
-    }
-  }
-  updateRegionTelemetry();
-}
-
-const roverLink = document.createElement('a');
-roverLink.className = 'lunar-rover-link';
-roverLink.textContent = 'Open rover terrain viewer';
 const roverPage = new URL('../lunar-rover-simulation/frontend/terrain.html', import.meta.url);
 if (location.port === '5173' && /^\/(?:index\.html)?$/.test(location.pathname)
     && ['localhost', '127.0.0.1'].includes(location.hostname)) roverPage.port = '5175';
-roverLink.href = roverPage.href;
-roverLink.addEventListener('click', () => { roverLink.href = simulation.linkTo(roverPage); });
-telemetryPanel.querySelector('.lunar-body').prepend(roverLink);
 
-// ---------- Region boxes: axis-aligned in a south-polar map (0° lon up), like NASA's map ----------
+// ---------- 2D south-pole map ----------
+// Basemap (assets/lunar-south-pole.webp): 1500 × 1500 px, south-polar stereographic, pole at the
+// centre, 0° longitude up, ~608 km across: the same framing as the LOLA 80°S DEM (checked against
+// Shackleton and two other craters). Regions are placed with LOLA's projection, so they line up.
+const MAP_PX = 1500, MAP_KM = 608, PX_PER_KM = MAP_PX / MAP_KM;
 const DEG = Math.PI / 180;
-function toPolar(lat, lon) {
-  const rho = MOON_RADIUS_KM * (90 + lat) * DEG;
+function polarKm(lat, lon) { // km east / north of the pole, LOLA polar stereographic
+  const rho = 2 * MOON_RADIUS_KM * Math.tan((90 + lat) / 2 * DEG);
   return [rho * Math.sin(lon * DEG), rho * Math.cos(lon * DEG)];
 }
-function fromPolar(x, y) {
-  const rho = Math.hypot(x, y);
-  return [Math.atan2(x, y) / DEG, -90 + rho / MOON_RADIUS_KM / DEG]; // [lon, lat]
-}
-function boxPolygon(r) {
-  const [cx, cy] = toPolar(r.lat, r.lon);
-  const [hw, hh] = [r.boxKm[0] / 2, r.boxKm[1] / 2];
-  const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh], [-hw, -hh]];
-  const ring = [];
-  for (let i = 0; i < 4; i++) {
-    const [a, b] = [corners[i], corners[i + 1]];
-    for (let t = 0; t < 8; t++) {
-      const f = t / 8;
-      ring.push(fromPolar(cx + a[0] + (b[0] - a[0]) * f, cy + a[1] + (b[1] - a[1]) * f));
-    }
-  }
-  ring.push(ring[0]);
-  return { type: 'Polygon', coordinates: [ring.reverse()] };
-}
-const boxes = REGIONS.map(r => ({ region: r, geometry: boxPolygon(r) }));
+// Leaflet's simple CRS: [y up from the image bottom, x right], in image pixels.
+const toLatLng = (xKm, yKm) => L.latLng(MAP_PX / 2 + yKm * PX_PER_KM, MAP_PX / 2 + xKm * PX_PER_KM);
 
-// ---------- Globe ----------
+const FULL = L.latLngBounds([0, 0], [MAP_PX, MAP_PX]);
+const moonMap = L.map('globe', { crs: L.CRS.Simple, minZoom: -1.5, maxZoom: 3, zoomSnap: 0.25,
+  attributionControl: false, zoomControl: false, maxBounds: FULL.pad(0.15) });
+L.control.zoom({ position: 'bottomleft' }).addTo(moonMap);
+L.imageOverlay('assets/lunar-south-pole.webp', FULL).addTo(moonMap);
+
 let selected = null;
-const globe = new Globe($('globe'))
-  .globeImageUrl('./lroc_color_2k.jpg')
-  .bumpImageUrl('./ldem_3_8bit.jpg')
-  .backgroundImageUrl('https://unpkg.com/three-globe@2.41.0/example/img/night-sky.png')
-  .showGraticules(true)
-  .showAtmosphere(false)
-  .polygonsData(boxes)
-  .polygonGeoJsonGeometry('geometry')
-  .polygonAltitude(d => (d.region === selected ? 0.004 : 0.002))
-  .polygonCapColor(d => (d.region === selected ? 'rgba(255,181,71,0.55)' : 'rgba(255,181,71,0.22)'))
-  .polygonSideColor(() => 'rgba(255,181,71,0.3)')
-  .polygonStrokeColor(() => '#ffb547')
-  .polygonLabel(d => d.region.name)
-  .onPolygonClick(d => select(d.region))
-  .htmlElementsData(REGIONS)
-  .htmlLat('lat').htmlLng('lon').htmlAltitude(0.006)
-  .htmlElement(r => {
-    const el = document.createElement('button');
-    el.className = 'pin' + (r.labelSide === 'left' ? ' left' : '');
-    el.dataset.id = r.id;
-    el.innerHTML = `<span class="dot"></span><span class="txt">${r.name}</span>`;
-    el.onclick = () => select(r);
-    return el;
-  })
-  .pointOfView(HOME_VIEW, 0);
-
-// Configure camera controls - wrap in try/catch for safety
-try {
-  const controls = globe.controls();
-  
-  if (controls) {
-    controls.minDistance = 101;
-    controls.autoRotate = false;
-
-    // Fix 1: Enable continuous pole wrapping
-    // Set spherical angle limits to allow full rotation through both poles
-    if (controls.minPolarAngle !== undefined) {
-      controls.minPolarAngle = 0;      // Allow rotation to north pole (top)
-      controls.maxPolarAngle = Math.PI; // Allow rotation to south pole (bottom)
-    }
-
-    // Enable all movement types
-    controls.enableRotate = true;
-    controls.enableZoom = true;
-    controls.enablePan = true;
-
-    // Prevent auto-rotation if enabled
-    if (controls.autoRotate) {
-      controls.autoRotate = false;
-    }
-
-    // Fix 2: Prevent zoom from causing view rotation
-    // Store the current camera position and restore it during zoom
-    let lastCameraPosition = null;
-
-    const originalControlsUpdate = controls.update.bind(controls);
-    controls.update = function() {
-      // Store position before update
-      if (this.object && this.object.position) {
-        lastCameraPosition = {
-          x: this.object.position.x,
-          y: this.object.position.y,
-          z: this.object.position.z
-        };
-      }
-      
-      originalControlsUpdate.call(this);
-    };
-
-    // Listen for mouse wheel to detect zoom and restore angle
-    try {
-      const canvas = globe.renderer().domElement;
-      let isZooming = false;
-
-      canvas.addEventListener('wheel', (event) => {
-        if (!isZooming && lastCameraPosition) {
-          isZooming = true;
-          
-          setTimeout(() => {
-            isZooming = false;
-          }, 150);
-        }
-      }, { passive: true });
-    } catch (e) {
-      console.warn('Could not set up wheel listener:', e);
-    }
-
-    // Ensure manual pan/rotate allows pole wrapping
-    if (controls.rotateSpeed !== undefined) {
-      controls.rotateSpeed = 1.0;
-    }
-  }
-} catch (e) {
-  console.warn('Camera control setup issue:', e);
-}
-
-window.addEventListener('resize', () => globe.width(innerWidth).height(innerHeight));
+const boxes = REGIONS.map(r => {
+  const [cx, cy] = polarKm(r.lat, r.lon);
+  const [hw, hh] = [r.boxKm[0] / 2, r.boxKm[1] / 2];
+  const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([dx, dy]) => toLatLng(cx + dx, cy + dy));
+  const polygon = L.polygon(corners, { color: '#ffb547', weight: 1.5, fillColor: '#ffb547', fillOpacity: 0.18 })
+    .addTo(moonMap).on('click', () => select(r));
+  const pin = L.marker(toLatLng(cx, cy), {
+    icon: L.divIcon({ className: 'pin-icon', iconSize: [10, 10], iconAnchor: [5, 5],
+      html: `<button class="pin${r.labelSide ? ' ' + r.labelSide : ''}" data-id="${r.id}"><span class="dot"></span><span class="txt">${r.name}</span></button>` }),
+    keyboard: false,
+  }).addTo(moonMap).on('click', () => select(r));
+  return { region: r, polygon, pin, bounds: polygon.getBounds() };
+});
+const HOME_BOUNDS = boxes.reduce((b, x) => b.extend(x.bounds), L.latLngBounds(boxes[0].bounds.getSouthWest(), boxes[0].bounds.getNorthEast())).pad(0.35);
+moonMap.fitBounds(HOME_BOUNDS);
+const goHome = () => moonMap.flyToBounds(HOME_BOUNDS, { duration: 0.8 });
 
 function refreshHighlight() {
-  globe.polygonsData(boxes);
+  for (const b of boxes) {
+    const on = b.region === selected;
+    b.polygon.setStyle({ weight: on ? 2.5 : 1.5, fillOpacity: on ? 0.38 : 0.18 });
+    if (on) b.polygon.bringToFront();
+  }
   document.querySelectorAll('.pin').forEach(el => el.classList.toggle('active', el.dataset.id === selected?.id));
 }
 
-// ---------- Panel 1: ranked constraints ----------
-let priorities = []; // constraint keys, most important first
+// ---------- Priorities ----------
+// Matches rank on every terrain feature that has data on both Moon and Earth, in this order
+// (1st gets the most weight). There is no settings UI: the team kept the app simple.
+const DEFAULT_ORDER = ['p90Slope', 'roughness', 'relief', 'meanSlope', 'shape'];
 
 // Which features have data on both Moon and Earth: the backend says so; without it, the sample set.
 let available = new Set(['meanSlope', 'p90Slope', 'roughness', 'relief']);
+const priorities = () => DEFAULT_ORDER.filter(k => available.has(k));
 fetch(`${API_BASE}/health`).then(r => r.json()).then(h => {
   if (h.features) available = new Set(h.features);
-  if (selected) renderOptions();
+  if (selected) search(); // re-rank once Shape is known to be available
 }).catch(() => {});
-const usable = c => !c.pending && available.has(c.key);
 
-function renderOptions() {
-  const groups = [...new Set(CONSTRAINTS.map(c => c.group))];
-  $('options').innerHTML = groups.map(g => `
-    <div class="group"><span class="group-name">${g}</span>
-      ${CONSTRAINTS.filter(c => c.group === g).map(c => `
-        <label class="opt ${usable(c) ? '' : 'pending'}">
-          <input type="checkbox" value="${c.key}" ${priorities.includes(c.key) ? 'checked' : ''} ${usable(c) ? '' : 'disabled'}>
-          <span><b>${c.label}</b><small>${c.pending ? c.hint : usable(c) ? c.hint : 'Waiting for Moon + Earth data'}</small></span>
-          ${usable(c) ? '' : '<em>soon</em>'}
-        </label>`).join('')}
-    </div>`).join('');
-  $('options').querySelectorAll('input').forEach(cb => cb.onchange = () => {
-    priorities = cb.checked ? [...priorities, cb.value] : priorities.filter(k => k !== cb.value);
-    renderChips();
-  });
-}
-
-function renderChips() {
-  $('chips').innerHTML = priorities.map((k, i) => `
-    <li class="chip"><span class="rank">${i + 1}</span><span class="chip-txt">${C[k].label}</span>
-      <span class="w">${Math.round(weights()[k] * 100)}%</span>
-      <button class="icon" data-k="${k}" aria-label="Remove ${C[k].label}">×</button></li>`).join('');
-  $('chips').querySelectorAll('button').forEach(b => b.onclick = () => {
-    priorities = priorities.filter(k => k !== b.dataset.k);
-    renderOptions(); renderChips();
-  });
-  $('chosen-label').hidden = priorities.length === 0;
-  $('go').disabled = priorities.length === 0;
-}
-
-// Rank → weight: 1st gets n, 2nd n-1, … normalized to sum 1. No sliders to guess.
+// Rank → weight: 1st gets n, 2nd n-1, … normalized to sum 1.
 function weights() {
-  const n = priorities.length;
+  const keys = priorities();
+  const n = keys.length;
   const total = (n * (n + 1)) / 2;
-  return Object.fromEntries(priorities.map((k, i) => [k, (n - i) / total]));
+  return Object.fromEntries(keys.map((k, i) => [k, (n - i) / total]));
 }
 
 function select(r) {
   selected = r;
-  $('demo').hidden = true;
-  updateRegionTelemetry();
   refreshHighlight();
-  globe.pointOfView({ lat: r.lat, lng: r.lon, altitude: 0.12 }, 900);
-  $('pick').hidden = false;
-  $('out').hidden = true;
+  const box = boxes.find(b => b.region === r);
+  moonMap.flyToBounds(box.bounds.pad(1.2), { paddingBottomRight: [420, 0], maxZoom: 1.5, duration: 0.8 });
+  $('demo').hidden = true;
+  $('out').hidden = false;
   $('r-name').textContent = r.name;
-  $('r-meta').textContent = `${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
-  renderOptions(); renderChips();
+  $('r-meta').textContent = `Moon · ${r.lat.toFixed(1)}°, ${r.lon.toFixed(1)}° · box ~${r.boxKm[0]}${r.boxKm[1] !== r.boxKm[0] ? ' × ' + r.boxKm[1] : ''} km`;
+  search();
 }
 
 document.querySelector('[data-close]').onclick = () => {
   selected = null;
   $('demo').hidden = false;
-  updateRegionTelemetry();
-  $('pick').hidden = true;
   $('out').hidden = true;
   refreshHighlight();
-  globe.pointOfView(HOME_VIEW, 900);
+  goHome();
 };
-$('out-close').onclick = () => { $('out').hidden = true; };
 
 // ---------- Matching ----------
 let lastResult = null;
 
-$('go').onclick = async () => {
-  if (!selected || !priorities.length) return;
+async function search() {
+  if (!selected) return;
   $('out').hidden = false;
   showList();
   $('status').textContent = 'Searching…';
   $('results').innerHTML = '';
   try {
-    const qs = new URLSearchParams({ region: selected.id, constraints: priorities.join(','), n: 5,
-      include_snow: $('snow').checked });
+    const qs = new URLSearchParams({ region: selected.id, constraints: priorities().join(','), n: 5 });
     const res = await fetch(`${API_BASE}/match?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     lastResult = await res.json();
@@ -273,15 +120,12 @@ $('go').onclick = async () => {
     lastResult = sampleMatch(selected.id, weights(), 5);
   }
   renderResults();
-};
-
-function startDemo() {
-  priorities = ['p90Slope', 'roughness'];
-  $('snow').checked = false;
-  select(REGIONS.find(region => region.id === 'de-gerlache-rim-2'));
-  $('go').click();
 }
 
+// One-click demo (team): open de Gerlache Rim 2's best Earth matches.
+function startDemo() {
+  select(REGIONS.find(region => region.id === 'de-gerlache-rim-2'));
+}
 $('demo').onclick = startDemo;
 if (new URLSearchParams(location.search).get('demo') === 'de-gerlache') startDemo();
 
@@ -319,7 +163,7 @@ function renderResults() {
     : r.sample
       ? `<span class="tag">Sample data</span> Placeholder ${(r.sampleParts ?? ['earth', 'moon']).map(p => p === 'earth' ? 'Earth' : 'Moon').join(' + ')} numbers.`
       : `${r.matches.length} best matches for ${selected.name}`;
-  if (!r.matches.length) $('status').textContent = 'No bare-ground patches match. Try fewer priorities or include snow/ice.';
+  if (!r.matches.length) $('status').textContent = 'No bare-ground Earth terrain matches this region.';
   $('results').innerHTML = r.matches.map((m, i) => `
     <li><button class="result" data-i="${i}">
       <span class="num">${i + 1}</span>
@@ -342,7 +186,10 @@ function fmt(k, v) {
 }
 
 function missionFit(f) {
-  const p90 = f.p90Slope.earth, rough = f.roughness.earth, relief = f.relief.earth;
+  const p90 = f.p90Slope?.earth, rough = f.roughness?.earth, relief = f.relief?.earth;
+  if (![p90, rough, relief].every(Number.isFinite)) {
+    return ['Unavailable', 'This match is missing measurements needed to assess mission fit.'];
+  }
   if (p90 < 15 && rough < 120) return ['Landing practice', 'Gentle slopes and smooth ground, like a lander touchdown zone.'];
   if (relief > 1200 || p90 > 25) return ['Crater-rim / massif operations', 'Big height range and steep sections, like working along a crater rim.'];
   return ['Rover traversal', 'Moderate slopes and roughness, good for driving and EVA route practice.'];
@@ -357,25 +204,34 @@ function showDetail(m) {
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '');
 
-  const [mission, why] = missionFit(m.features);
+  // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
+  const sample = lastResult.source !== 'backend';
+  $('d-rover').disabled = false;
+  $('d-rover-note').textContent = sample
+    ? 'sample match · preset Earth terrain offline'
+    : 'drive this spot · toggle Moon ⇄ Earth';
+  $('d-rover').onclick = () => { location.href = roverLinkFor(m); };
+
+  const features = m.features ?? {};
+  const [mission, why] = missionFit(features);
   $('d-mission').innerHTML = `<b>${mission}</b> — ${why}`;
 
-  const keys = Object.keys(m.features);
+  const keys = Object.keys(features).filter(k => C[k] &&
+    [features[k]?.moon, features[k]?.earth, features[k]?.score].every(Number.isFinite));
   $('d-table').innerHTML = `<tr><th></th><th>Moon</th><th>Earth</th><th>Fit</th></tr>` + keys.map(k => {
-    const f = m.features[k];
+    const f = features[k];
     const cls = f.score >= 75 ? 'good' : f.score >= 45 ? 'ok' : 'bad';
-    const pri = priorities.indexOf(k);
-    return `<tr class="${pri >= 0 ? 'pri' : ''}"><td>${C[k].label}${pri >= 0 ? ` <span class="rank sm">${pri + 1}</span>` : ''}</td>
+    return `<tr><td>${C[k].label}</td>
       <td>${fmt(k, f.moon)}</td><td>${fmt(k, f.earth)}</td>
       <td><span class="bar ${cls}"><i style="width:${f.score}%"></i></span></td></tr>`;
   }).join('');
 
   const pros = [], cons = [];
   for (const k of keys) {
-    const f = m.features[k], diff = f.earth - f.moon;
+    const f = features[k], diff = f.earth - f.moon;
     if (f.score >= 75) pros.push(`${C[k].label} is close to the Moon site (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
     else if (f.score < 45) cons.push(`${C[k].label}: ${diff > 0 ? 'more' : 'less'} than the Moon site (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
-    else if (priorities.includes(k)) cons.push(`${C[k].label} is only a partial match (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
+    else cons.push(`${C[k].label} is only a partial match (${fmt(k, f.earth)} vs ${fmt(k, f.moon)}).`);
   }
   cons.push('Earth-shaped terrain: erosion, not impacts. No lunar gravity, vacuum, or polar lighting.');
   $('d-pros').innerHTML = (pros.length ? pros : ['No feature is a close match.']).map(t => `<li>${t}</li>`).join('');
@@ -400,7 +256,9 @@ function roverLinkFor(m) {
     lat: m.lat.toFixed(4), lon: m.lon.toFixed(4), name: m.name, country: m.country ?? '', cc: m.cc ?? '',
     match: Math.round(m.match),
   });
-  return simulation.linkTo(url); // carries the lunar clock across, like the telemetry link
+  return url.href;
 }
 
-loadRegionMeasurements();
+// Coming back from the rover (…/index.html?region=…) reopens that region's matches.
+const startRegion = REGIONS.find(r => r.id === new URLSearchParams(location.search).get('region'));
+if (startRegion) select(startRegion);

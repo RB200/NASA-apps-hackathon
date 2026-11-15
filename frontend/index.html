@@ -6,7 +6,6 @@
   <title>Lunar Terrain Analogs</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="lunar-telemetry.css" />
 </head>
 <body>
   <div id="globe"></div>
@@ -17,36 +16,19 @@
     <button id="demo" class="demo-button">Try the de Gerlache scenario</button>
   </header>
 
-  <!-- Left panel: pick constraints for the selected Moon region -->
-  <aside id="pick" class="panel" hidden>
-    <div class="panel-head">
-      <h2 id="r-name"></h2>
-      <button class="icon close" data-close aria-label="Close">×</button>
-    </div>
-    <p id="r-meta" class="muted"></p>
-
-    <p class="label">What matters most? <span class="muted">Pick in order of importance.</span></p>
-    <div id="options"></div>
-
-    <p class="label" id="chosen-label">Your priorities</p>
-    <ol id="chips"></ol>
-
-    <label class="toggle"><input type="checkbox" id="snow"> Include snow / ice terrain</label>
-
-    <button id="go" class="primary" disabled>GO</button>
-  </aside>
-
   <div class="right-panels">
-    <details id="lunar-telemetry" class="lunar-telemetry"></details>
-  <!-- Right panel: results list, then detail for one Earth location -->
+  <!-- Popup for the selected Moon region: top Earth matches, then detail for one Earth location -->
   <aside id="out" class="panel" hidden>
     <div id="list-view">
       <div class="panel-head">
-        <h2>Earth matches</h2>
-        <button class="icon close" id="out-close" aria-label="Close">×</button>
+        <h2 id="r-name"></h2>
+        <button class="icon close" data-close aria-label="Close">×</button>
       </div>
+      <p id="r-meta" class="muted"></p>
+      <p class="label">Best Earth matches</p>
       <p id="status" class="muted"></p>
       <ol id="results"></ol>
+
     </div>
 
     <div id="detail-view" hidden>
@@ -57,6 +39,7 @@
       <p id="d-meta" class="muted"></p>
       <div id="d-map"></div>
       <div id="d-score"></div>
+      <button id="d-rover" class="primary rover-button">Enter rover <small id="d-rover-note">drive this spot · toggle Moon ⇄ Earth</small></button>
       <h3>Best for</h3>
       <p id="d-mission"></p>
       <h3>Terrain comparison</h3>
@@ -71,11 +54,10 @@
   </div>
 
   <footer id="credits">
-    Moon imagery and elevation: NASA SVS CGI Moon Kit, LRO LROC and LOLA · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA Artemis III candidate map
+    South-pole map image: source to be credited · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA Artemis III candidate map
   </footer>
 
-  <script src="https://unpkg.com/globe.gl@2.46.2/dist/globe.gl.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="main.js"></script>
+  <script type="module" src="main.js?v=south-pole-2d"></script>
 </body>
 </html>
