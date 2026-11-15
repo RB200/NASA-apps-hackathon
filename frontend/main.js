@@ -148,14 +148,17 @@ function loadReachability() {
 
 function scoreReachability(result, region, data) {
   const moon = data?.moon[region];
-  if (!moon?.length || !result.matches.length ||
-      !result.matches.every(match => data.earth[terrainKey(match)]?.length === moon.length)) return;
+  if (!moon?.length) return;
   for (const match of result.matches) {
     const earth = data.earth[terrainKey(match)];
+    if (earth?.length !== moon.length) continue;
     const gap = moon.reduce((sum, value, i) => sum + Math.abs(value - earth[i]), 0) / moon.length;
     match.reachabilityScore = 100 - gap;
+    const index = data.slopeLimits.indexOf(15);
+    if (index >= 0) match.reachableAt15 = { earth: earth[index], moon: moon[index] };
   }
-  result.includesReachability = true;
+  result.includesReachability = result.matches.length > 0 &&
+    result.matches.every(match => Number.isFinite(match.reachabilityScore));
 }
 
 function loadShadows() {
@@ -284,14 +287,44 @@ function fmt(k, v) {
   return `${v.toFixed(d)}${C[k].unit}`;
 }
 
-function missionFit(f) {
-  const p90 = f.p90Slope?.earth, rough = f.roughness?.earth, relief = f.relief?.earth;
-  if (![p90, rough, relief].every(Number.isFinite)) {
-    return ['Unavailable', 'This match is missing measurements needed to assess mission fit.'];
+function missionFit(match) {
+  const suggestions = [];
+  const shadows = match.shadows;
+  if (shadows?.score >= 85) {
+    const directions = shadows.directions.map((direction, i) => ({
+      direction, earth: shadows.earth[i], moon: shadows.moon[i],
+    }));
+    const best = directions.filter(({ earth, moon }) =>
+      Math.min(earth, moon) >= 15 && Math.abs(earth - moon) <= 10
+    ).sort((a, b) => Math.min(b.earth, b.moon) - Math.min(a.earth, a.moon))[0];
+    if (best) suggestions.push(['Driving in low sunlight',
+      `With the Sun ${shadows.sunAngle}° up from the ${best.direction}, ${Math.round(best.earth)}% of the Earth site and ${Math.round(best.moon)}% of the Moon site fall in terrain shadow.`]);
   }
-  if (p90 < 15 && rough < 120) return ['Landing practice', 'Gentle slopes and smooth ground, like a lander touchdown zone.'];
-  if (relief > 1200 || p90 > 25) return ['Crater-rim / massif operations', 'Big height range and steep sections, like working along a crater rim.'];
-  return ['Rover traversal', 'Moderate slopes and roughness, good for driving and EVA route practice.'];
+
+  const reachable = match.reachableAt15;
+  if (match.reachabilityScore >= 85 && reachable &&
+      Math.min(reachable.earth, reachable.moon) >= 10 &&
+      Math.abs(reachable.earth - reachable.moon) <= 10) {
+    suggestions.push(['Rover route planning',
+      `At a 15° slope limit, a rover could reach ${Math.round(reachable.earth)}% of the Earth patch and ${Math.round(reachable.moon)}% of the Moon patch from the center in the terrain model.`]);
+  }
+
+  const exercises = {
+    p90Slope: 'Planning around steep slopes',
+    meanSlope: 'Driving on similar grades',
+    roughness: 'Driving over uneven terrain',
+    relief: 'Planning for elevation changes',
+  };
+  const strongest = Object.keys(exercises).filter(key => {
+    const feature = match.features?.[key];
+    return feature?.score >= 75 && [feature.earth, feature.moon].every(Number.isFinite);
+  }).sort((a, b) => match.features[b].score - match.features[a].score)[0];
+  if (strongest && suggestions.length < 2) {
+    const { earth, moon } = match.features[strongest];
+    suggestions.push([exercises[strongest],
+      `${C[strongest].label} is ${fmt(strongest, earth)} on Earth and ${fmt(strongest, moon)} on the Moon.`]);
+  }
+  return suggestions;
 }
 
 async function showReachability(region, match) {
@@ -350,8 +383,16 @@ function showDetail(m) {
   $('d-rover').onclick = () => { location.href = roverLinkFor(m); };
 
   const features = m.features ?? {};
-  const [mission, why] = missionFit(features);
-  $('d-mission').innerHTML = `<b>${mission}</b> — ${why}`;
+  const mission = $('d-mission');
+  const suggestions = lastResult.sample ? [] : missionFit(m);
+  mission.hidden = !suggestions.length;
+  mission.querySelector('ul').replaceChildren(...suggestions.map(([title, why]) => {
+    const item = document.createElement('li');
+    const label = document.createElement('b');
+    label.textContent = title;
+    item.append(label, ` · ${why}`);
+    return item;
+  }));
 
   const keys = Object.keys(features).filter(k => C[k] &&
     [features[k]?.moon, features[k]?.earth, features[k]?.score].every(Number.isFinite));

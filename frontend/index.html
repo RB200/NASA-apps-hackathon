@@ -41,8 +41,10 @@
       <div id="d-map"></div>
       <div id="d-score"></div>
       <button id="d-rover" class="primary rover-button">Enter rover <small id="d-rover-note">drive this spot · toggle Moon ⇄ Earth</small></button>
-      <h3>Best for</h3>
-      <p id="d-mission"></p>
+      <section id="d-mission" hidden>
+        <h3>Best for</h3>
+        <ul></ul>
+      </section>
       <h3>Terrain comparison</h3>
       <table id="d-table"></table>
       <section id="d-reachability" hidden>
@@ -72,6 +74,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="main.js?v=shadow-3"></script>
+  <script type="module" src="main.js?v=mission-fit"></script>
 </body>
 </html>
