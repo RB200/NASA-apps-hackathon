@@ -1,4 +1,4 @@
-import { mountTraverse } from './traverse-ui.js?v=traverse-open-1';
+import { mountTraverse } from './traverse-ui.js?v=traverse-all-regions-1';
 import { gridTriangle, traverseTile } from './traverse.mjs?v=environment-1';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
@@ -18,7 +18,7 @@ const traverse = mountTraverse({
   earthSites: () => Object.entries(earthMetadata?.sites ?? {}),
   async loadEarthSite(id) {
     const site = earthMetadata.sites[id];
-    return analysisTile(await loadTraverseTile({ ...site, file: `earth/${site.file}` }), false);
+    return analysisTile(await loadTraverseTile({ ...site, body: 'earth', file: `earth/${site.file}` }), false);
   },
   refocus: () => { if (walkMode) renderer.domElement.focus({ preventScroll: true }); },
 });
@@ -710,25 +710,26 @@ function analysisTile(grid, lunar) {
 
 function beginTraverse(x, z) {
   const world = isEarth() ? 'earth' : 'moon';
-  let reason;
-  if (earthRegion !== 'de-gerlache-rim-2') {
-    reason = 'Paired analysis is unavailable for this region. Traverse analysis currently supports de Gerlache Rim 2.';
-  } else if (!earthMetadata?.regions?.[earthRegion]) {
-    reason = 'Paired analysis is unavailable: the Earth analog tile is missing.';
-  } else if (!isEarth() && !['detail', 'moon-site'].includes(viewMode)) {
-    reason = 'Paired analysis requires a dedicated de Gerlache Rim 2 view. You can still drive this terrain.';
-  }
+  const earth = world === 'earth';
   const active = viewData;
-  const region = earthRegion;
-  const paired = reason ? null : isEarth() ? moonSiteDescriptor(region)
-    : earthDescriptor(earthMetadata, region, earthSite);
-  if (!reason && !paired) reason = 'Paired analysis is unavailable: the dedicated lunar tile is missing.';
+  const paired = earth
+    ? moonSiteDescriptor(earthRegion)
+    : earthMetadata?.regions?.[earthRegion] && earthDescriptor(earthMetadata, earthRegion, earthSite);
+  const reason = paired ? null : earth
+    ? 'The selected lunar region has no elevation tile for comparison.'
+    : 'The selected lunar region has no Earth elevation tile for comparison.';
   traverse.start(world, { x, z }, reason, async () => {
-    const other = await loadTraverseTile(paired);
-    const earth = world === 'earth' ? active : other;
-    const moon = world === 'moon' ? active : other;
-    const namedMoon = { ...moon, descriptor: { ...moon.descriptor, name: REGIONS[region].name } };
-    return { earth: analysisTile(earth, false), moon: analysisTile(namedMoon, true) };
+    let other;
+    try {
+      other = await loadTraverseTile(paired);
+    } catch (error) {
+      const hint = paired.url ? 'Start the backend and check elevation coverage for this location.' : 'Check that the elevation tile is available.';
+      throw new Error(`Could not load ${paired.name} for comparison. ${hint}`, { cause: error });
+    }
+    return {
+      earth: analysisTile(earth ? active : other, false),
+      moon: analysisTile(earth ? other : active, true),
+    };
   });
 }
 
@@ -749,7 +750,8 @@ async function showView(mode) {
     if (!viewData || viewData.key !== key) {
       const descriptorForMode = mode === 'moon-site' ? moonSiteDescriptor(earthRegion)
         : mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion, earthSite)
-        : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
+        : mode === 'detail' ? { ...metadata.detail, name: 'de Gerlache Rim 2 detail' }
+        : mode === 'crater' ? { ...metadata.crater, name: 'Polar crater floor' } : metadata.overview;
       if (!descriptorForMode) throw new Error(`LOLA terrain tile is unavailable for ${earthRegion}`);
       const descriptor = descriptorForMode;
       const data = await readGrid(descriptor);

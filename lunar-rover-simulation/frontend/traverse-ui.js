@@ -364,7 +364,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
       current = entry;
       if (!reason) entry.ready = loadPair().then(tiles => test.setTiles(tiles)).catch(error => {
         console.warn('Could not load the traverse terrain pair.', error);
-        entry.reason = 'Paired comparison unavailable: one of the elevation tiles could not load.';
+        entry.reason = error.message;
       }).finally(() => {
         if (current === entry) update(true);
       });

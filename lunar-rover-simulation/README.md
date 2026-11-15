@@ -31,9 +31,9 @@ The same rover can drive the best Earth analog of each Artemis III region (from 
 
 ## Live Terrain Traverse Analysis
 
-Choose **de Gerlache Rim 2**, drive on either world, then open **Live Terrain Comparison**. The other tile is sampled from its center along the same path in local east/north metres. Both profiles start at zero, sample every 30 m of horizontal travel, and include the final valid endpoint. The comparison uses raw DEM heights: Earth at 30 m, the dedicated lunar site at 20 m, or the 5 m lunar tile if driving in the De Gerlache detail view.
+Choose any Artemis region and drive on either world. **Live Terrain Comparison** opens automatically and samples the same route from the center of the other tile in local east/north metres. The lunar detail and crater drive views also work with the selected Earth analog. Both profiles start at zero and sample every 30 m, plus the final valid point. Site tiles use a 20 m lunar grid and a 30 m Earth grid. The de Gerlache detail view uses a 5 m lunar grid, and the crater comparison uses its 20 m base grid. Earth locations selected in the atlas require the backend to supply their elevation.
 
-Select **Finish test** for two aligned overhead maps, the elevation profiles, and route statistics. **R** starts a new recording. Switching worlds or exiting drive ends the current recording; **View last report** can reopen the latest result while the page stays open. When a route leaves either tile, the report marks it incomplete and stops the paired comparison at the boundary. Other regions still support driving.
+Select **Finish test** for two aligned overhead maps, the elevation profiles, and route statistics. **R** starts a new recording. Switching worlds or exiting drive ends the current recording; **View last report** can reopen the latest result while the page stays open. When a route leaves either tile, the report marks it incomplete and stops the paired comparison at the boundary.
 
 Run the sampling and alignment tests from the repository root:
 
