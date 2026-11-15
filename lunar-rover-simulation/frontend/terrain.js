@@ -5,7 +5,7 @@ import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
   mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=lunar-skybox-headlights-1';
-import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=environment-clock-2';
+import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=drive-velocity';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -109,13 +109,9 @@ const driveTelemetry = $('drive-telemetry');
 driveTelemetry.open = matchMedia('(min-width: 821px)').matches;
 const simulation = mountLunarSimulation(driveTelemetry, {
   driving: true,
-  onSpeedChange: () => { if (walkMode) showPlaybackSpeed(); },
   onEpochChange: () => { if (walkMode) updateDriveTelemetry(); },
   onStart: () => renderer.domElement.focus({ preventScroll: true }),
-  onPause() {
-    walkKeys.clear();
-    $('walk-pace').textContent = '0.0 km/h';
-  },
+  onPause: () => walkKeys.clear(),
   onReset: () => { if (walkMode) resetRover(); },
 });
 // Earth analog mode (earth.js). Earth tiles carry their own pixel size and height scale.
@@ -643,11 +639,13 @@ function updateDriveTelemetry() {
   keyLight.intensity = up > 0 ? 4 : 0;
 }
 
-function showPlaybackSpeed() {
-  const { running, speed } = simulation.clock.read();
-  const rate = isEarth() ? 1 : running ? speed : 0;
-  const kmh = Math.hypot(dynamics.vx, dynamics.vz) * 3.6 * rate;
-  $('walk-pace').textContent = `${kmh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km/h`;
+const velocityFormat = new Intl.NumberFormat('en-US', {
+  signDisplay: 'exceptZero', minimumFractionDigits: 1, maximumFractionDigits: 1,
+});
+function showVelocity() {
+  const { vx, vz, yaw } = dynamics;
+  const forwardKmh = 3.6 * (vx * Math.sin(yaw) - vz * Math.cos(yaw));
+  $('walk-pace').textContent = `${velocityFormat.format(forwardKmh)} km/h`;
 }
 
 const recordTraversePosition = (x, z) => traverse.record(x, z);
@@ -665,7 +663,7 @@ function updateWalker(simulatedDt, frameDt) {
   if (walkHudElapsed > 0.12) {
     const distance = dynamics.distance;
     $('walk-distance').textContent = distance < 1000 ? `${distance.toFixed(0)} m` : `${(distance / 1000).toFixed(2)} km`;
-    showPlaybackSpeed();
+    showVelocity();
     $('walk-ground').textContent = `${Math.round(terrainAt(rover.position.x, rover.position.z).elevation).toLocaleString()} m`;
     updateDriveTelemetry();
     walkHudElapsed = 0;
@@ -711,9 +709,6 @@ function enterWalkMode(spawn = null) {
     lon: viewData?.descriptor.centerLongitude,
   } : null);
   driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
-  const paceButton = $('walk-pace').closest('button');
-  paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
-  paceButton.querySelector('span').textContent = earth ? 'SPEED' : 'PLAYBACK SPEED';
   $('walk-ground').closest('button').dataset.method = earth ? 'earthGround' : 'ground';
   simulation.clock.start();
   renderer.domElement.focus({ preventScroll: true });
