@@ -1,7 +1,10 @@
 """Extract compact height grids from the LOLA 5 m south-pole IMG for the web viewer.
 
 Run with bytecode disabled:
-  python3 -B data_prep/prepare_lola_3d.py
+  python3 -B data_prep/prepare_lola_3d.py                 # from a local copy of ldem_875s_5m.img
+  python3 -B data_prep/prepare_lola_3d.py --remote        # no 1.8 GB download: reads only the rows
+                                                          # needed from NASA PDS (HTTP range requests);
+                                                          # keeps the existing overview tile
 
 The overview samples the whole raster at 160 m spacing. The local tile keeps
 the source's native 5 m pixels around De Gerlache Rim 2.
@@ -21,7 +24,9 @@ OVERVIEW_STRIDE = 32
 DETAIL_SIZE = 512
 DETAIL_STRIDE = 1
 DETAIL_CENTER = (-88.2, -64.4)  # approximate center of the De Gerlache Rim 2 candidate region
-CRATER_CENTER = (-88.029, 132.8)  # floor of the large crater shown in the polar overview
+# Floor of the large crater shown in the polar overview. (Was written as 132.8°E under the old,
+# mirrored formula; the crater actually picked and cut is at 47.2°E: same pixels, true coordinates.)
+CRATER_CENTER = (-88.029, 47.2)
 CRATER_SPAWN_OFFSET = (5000.0, -5000.0)  # inside the bowl, facing the far wall
 CRATER_OVERVIEW_SIZE = 1024
 CRATER_OVERVIEW_STRIDE = 4  # 20 m/sample over a 20.48 km square
@@ -34,20 +39,51 @@ def label_value(label: str, key: str) -> str:
     return match.group(1).split("<", 1)[0].strip().strip('"')
 
 
-def write_sampled_grid(source: mmap.mmap, source_cols: int, source_rows: int,
+PDS_IMG = ("https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/"
+           "lola_gdr/polar/img/ldem_875s_5m")
+
+
+def local_reader(source: mmap.mmap, source_cols: int):
+    """read(row, first_col, n) -> n little-endian int16 samples from a local IMG."""
+    def read(row: int, first_col: int, n: int) -> bytes:
+        start = 2 * (row * source_cols + first_col)
+        return source[start:start + 2 * n]
+    return read
+
+
+def remote_reader(url: str, source_cols: int):
+    """Same as local_reader, but fetches only the bytes needed with HTTP range requests."""
+    import urllib.request
+
+    def read(row: int, first_col: int, n: int) -> bytes:
+        start = 2 * (row * source_cols + first_col)
+        request = urllib.request.Request(url, headers={"Range": f"bytes={start}-{start + 2 * n - 1}"})
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    data = response.read()
+                if len(data) == 2 * n:
+                    return data
+            except OSError:
+                if attempt == 3:
+                    raise
+        raise IOError(f"short read at row {row}")
+    return read
+
+
+def write_sampled_grid(read, source_cols: int, source_rows: int,
                        first_row: int, first_col: int, width: int, height: int,
                        stride: int, destination: Path) -> None:
+    if not (0 <= first_col and first_col + (width - 1) * stride < source_cols):
+        raise ValueError("Requested grid exceeds source columns")
     output = bytearray(width * height * 2)
+    span = (width - 1) * stride + 1
     for out_row in range(height):
         src_row = first_row + out_row * stride
         if not 0 <= src_row < source_rows:
             raise ValueError("Requested grid exceeds source rows")
-        for out_col in range(width):
-            src_col = first_col + out_col * stride
-            if not 0 <= src_col < source_cols:
-                raise ValueError("Requested grid exceeds source columns")
-            value = struct.unpack_from("<h", source, 2 * (src_row * source_cols + src_col))[0]
-            struct.pack_into("<h", output, 2 * (out_row * width + out_col), value)
+        values = struct.unpack_from(f"<{span}h", read(src_row, first_col, span))[::stride]
+        struct.pack_into(f"<{width}h", output, 2 * out_row * width, *values)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(output)
 
@@ -58,10 +94,16 @@ def main() -> None:
                         default=Path.home() / "Desktop/nasa data/downloads/ldem_875s_5m.img")
     parser.add_argument("--output", type=Path,
                         default=Path(__file__).resolve().parent.parent / "frontend" / "assets")
+    parser.add_argument("--remote", action="store_true",
+                        help="read only the needed rows from NASA PDS instead of a local IMG")
     args = parser.parse_args()
     image = args.image.expanduser()
-    label_path = image.with_suffix(".lbl")
-    label = label_path.read_text(encoding="utf-8")
+    if args.remote:
+        import urllib.request
+        with urllib.request.urlopen(PDS_IMG + ".lbl", timeout=60) as response:
+            label = response.read().decode("utf-8", "replace")
+    else:
+        label = image.with_suffix(".lbl").read_text(encoding="utf-8")
     rows = int(label_value(label, "LINES"))
     cols = int(label_value(label, "LINE_SAMPLES"))
     scale = float(label_value(label, "SCALING_FACTOR"))
@@ -70,7 +112,7 @@ def main() -> None:
     line_offset = float(label_value(label, "LINE_PROJECTION_OFFSET"))
     sample_offset = float(label_value(label, "SAMPLE_PROJECTION_OFFSET"))
     expected_size = rows * cols * 2
-    if image.stat().st_size != expected_size:
+    if not args.remote and image.stat().st_size != expected_size:
         raise ValueError(f"Unexpected image size: expected {expected_size} bytes")
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -83,9 +125,12 @@ def main() -> None:
                       stride: int) -> tuple[int, int]:
         rho = 2 * MOON_RADIUS_M * math.tan(math.radians(90 + center_lat) / 2)
         x = rho * math.sin(math.radians(center_lon))
-        y = -rho * math.cos(math.radians(center_lon))
-        center_col = round(x / pixel_m + sample_offset - 1)
-        center_row = round(line_offset - y / pixel_m - 1)
+        # LOLA south polar stereographic (as GDAL reads the PDS label): y points to 0° longitude
+        # (top of the raster), 0-based column = x / scale + SAMPLE_PROJECTION_OFFSET,
+        # 0-based row = LINE_PROJECTION_OFFSET - y / scale.
+        y = rho * math.cos(math.radians(center_lon))
+        center_col = round(x / pixel_m + sample_offset)
+        center_row = round(line_offset - y / pixel_m)
         half_span = size * stride // 2
         return center_row - half_span, center_col - half_span
 
@@ -96,30 +141,38 @@ def main() -> None:
     def polar_xy(center_lat: float, center_lon: float) -> tuple[float, float]:
         rho = 2 * MOON_RADIUS_M * math.tan(math.radians(90 + center_lat) / 2)
         return (rho * math.sin(math.radians(center_lon)),
-                -rho * math.cos(math.radians(center_lon)))
+                rho * math.cos(math.radians(center_lon)))
 
     crater_x, crater_y = polar_xy(crater_lat, crater_lon)
     spawn_x = crater_x + CRATER_SPAWN_OFFSET[0]
     spawn_y = crater_y + CRATER_SPAWN_OFFSET[1]
     spawn_rho = math.hypot(spawn_x, spawn_y)
     spawn_lat = math.degrees(2 * math.atan(spawn_rho / (2 * MOON_RADIUS_M))) - 90
-    spawn_lon = math.degrees(math.atan2(spawn_x, -spawn_y))
+    spawn_lon = math.degrees(math.atan2(spawn_x, spawn_y))
     crater_detail_first_row, crater_detail_first_col = source_window(
         spawn_lat, spawn_lon, DETAIL_SIZE, DETAIL_STRIDE)
 
-    with image.open("rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as source:
-        write_sampled_grid(source, cols, rows, 0, 0, overview_width, overview_height,
-                           OVERVIEW_STRIDE, args.output / "lunar-south-pole-overview-i16.bin")
-        write_sampled_grid(source, cols, rows, detail_first_row, detail_first_col,
+    def cut(read, include_overview: bool) -> None:
+        # The whole-cap overview does not depend on any lat/lon, so --remote keeps the existing one.
+        if include_overview:
+            write_sampled_grid(read, cols, rows, 0, 0, overview_width, overview_height,
+                               OVERVIEW_STRIDE, args.output / "lunar-south-pole-overview-i16.bin")
+        write_sampled_grid(read, cols, rows, detail_first_row, detail_first_col,
                            DETAIL_SIZE, DETAIL_SIZE, DETAIL_STRIDE,
                            args.output / "de-gerlache-detail-5m-i16.bin")
-        write_sampled_grid(source, cols, rows, crater_first_row, crater_first_col,
+        write_sampled_grid(read, cols, rows, crater_first_row, crater_first_col,
                            CRATER_OVERVIEW_SIZE, CRATER_OVERVIEW_SIZE,
                            CRATER_OVERVIEW_STRIDE,
                            args.output / "polar-crater-overview-i16.bin")
-        write_sampled_grid(source, cols, rows, crater_detail_first_row, crater_detail_first_col,
+        write_sampled_grid(read, cols, rows, crater_detail_first_row, crater_detail_first_col,
                            DETAIL_SIZE, DETAIL_SIZE, DETAIL_STRIDE,
                            args.output / "polar-crater-detail-5m-i16.bin")
+
+    if args.remote:
+        cut(remote_reader(PDS_IMG + ".img", cols), include_overview=False)
+    else:
+        with image.open("rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as source:
+            cut(local_reader(source, cols), include_overview=True)
 
     metadata = {
         "columns": cols,
