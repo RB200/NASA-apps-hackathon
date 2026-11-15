@@ -13,8 +13,8 @@
       "latitude": -83.6,
       "longitude": -68.6,
       "file": "cabeus-b-peak-20m-i16.bin",
-      "firstRow": 18231,
-      "firstColumn": 5643,
+      "firstRow": 11143,
+      "firstColumn": 5644,
       "centerLatitude": -83.6,
       "centerLongitude": -68.6
     },
@@ -24,8 +24,8 @@
       "latitude": -86.8,
       "longitude": -22.6,
       "file": "haworth-20m-i16.bin",
-      "firstRow": 19167,
-      "firstColumn": 12822,
+      "firstRow": 10207,
+      "firstColumn": 12823,
       "centerLatitude": -86.8,
       "centerLongitude": -22.6
     },
@@ -35,8 +35,8 @@
       "latitude": -86.0,
       "longitude": 0.0,
       "file": "malapert-massif-20m-i16.bin",
-      "firstRow": 20754,
-      "firstColumn": 14686,
+      "firstRow": 8620,
+      "firstColumn": 14688,
       "centerLatitude": -86.0,
       "centerLongitude": 0.0
     },
@@ -46,8 +46,8 @@
       "latitude": -84.3,
       "longitude": 30.5,
       "file": "mons-mouton-plateau-20m-i16.bin",
-      "firstRow": 22139,
-      "firstColumn": 19076,
+      "firstRow": 7235,
+      "firstColumn": 19077,
       "centerLatitude": -84.3,
       "centerLongitude": 30.5
     },
@@ -57,8 +57,8 @@
       "latitude": -85.4,
       "longitude": 31.7,
       "file": "mons-mouton-20m-i16.bin",
-      "firstRow": 20624,
-      "firstColumn": 18353,
+      "firstRow": 8750,
+      "firstColumn": 18354,
       "centerLatitude": -85.4,
       "centerLongitude": 31.7
     },
@@ -68,8 +68,8 @@
       "latitude": -85.4,
       "longitude": 37.3,
       "file": "nobile-rim-1-20m-i16.bin",
-      "firstRow": 20237,
-      "firstColumn": 18915,
+      "firstRow": 9137,
+      "firstColumn": 18916,
       "centerLatitude": -85.4,
       "centerLongitude": 37.3
     },
@@ -79,8 +79,8 @@
       "latitude": -84.0,
       "longitude": 58.8,
       "file": "nobile-rim-2-20m-i16.bin",
-      "firstRow": 19403,
-      "firstColumn": 22475,
+      "firstRow": 9971,
+      "firstColumn": 22476,
       "centerLatitude": -84.0,
       "centerLongitude": 58.8
     },
@@ -90,8 +90,8 @@
       "latitude": -88.2,
       "longitude": -64.4,
       "file": "de-gerlache-rim-2-20m-i16.bin",
-      "firstRow": 15866,
-      "firstColumn": 12225,
+      "firstRow": 13508,
+      "firstColumn": 12226,
       "centerLatitude": -88.2,
       "centerLongitude": -64.4
     },
@@ -101,8 +101,8 @@
       "latitude": -87.2,
       "longitude": 125.4,
       "file": "slater-plain-20m-i16.bin",
-      "firstRow": 12227,
-      "firstColumn": 18148,
+      "firstRow": 17147,
+      "firstColumn": 18149,
       "centerLatitude": -87.2,
       "centerLongitude": 125.4
     }
