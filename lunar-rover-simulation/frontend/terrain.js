@@ -32,6 +32,7 @@ controls.maxPolarAngle = Math.PI * 0.49;
 scene.add(new THREE.HemisphereLight('#e2e8ef', '#18212a', 1.35));
 const keyLight = new THREE.DirectionalLight('#fff0d7', 4.0);
 // Keep the sun direction fixed while its shadow camera covers the rover.
+const driveSunOffset = new THREE.Vector3();
 const sunOffset = new THREE.Vector3(-0.8, 0.60, 1.1).normalize().multiplyScalar(36);
 keyLight.position.copy(sunOffset);
 const shadowCamera = keyLight.shadow.camera;
@@ -78,6 +79,9 @@ const walkClock = new THREE.Clock();
 const driveTelemetry = $('drive-telemetry');
 driveTelemetry.open = matchMedia('(min-width: 821px)').matches;
 const simulation = mountLunarSimulation(driveTelemetry, {
+  driving: true,
+  onSpeedChange: () => { if (walkMode) showPlaybackSpeed(); },
+  onEpochChange: () => { if (walkMode) updateDriveTelemetry(); },
   onStart: () => renderer.domElement.focus({ preventScroll: true }),
   onPause() {
     walkKeys.clear();
@@ -427,23 +431,39 @@ function updateDriveTelemetry() {
     const riseZ = elevation(px, pz + step) - elevation(px, pz - step);
     slope = THREE.MathUtils.radToDeg(Math.atan(Math.hypot(riseX, riseZ) / (2 * step)));
   }
-  simulation.updateRoverPosition(lat, lon, slope, `Local LOLA slope (${step} m grid)`);
+  const environment = simulation.updateRoverPosition(lat, lon, slope, `Local LOLA slope (${step} m grid)`);
+  if (!environment) return;
+  const longitude = THREE.MathUtils.degToRad(lon);
+  const { east: solarEast, north: solarNorth, up } = environment;
+  driveSunOffset.set(
+    solarEast * Math.cos(longitude) + solarNorth * Math.sin(longitude),
+    up,
+    solarEast * Math.sin(longitude) - solarNorth * Math.cos(longitude),
+  ).multiplyScalar(36);
+  keyLight.intensity = up > 0 ? 4 : 0;
 }
 
-function updateWalker(dt) {
+function showPlaybackSpeed() {
+  const { running, speed } = simulation.clock.read();
+  const rate = isEarth() ? 1 : running ? speed : 0;
+  const kmh = Math.hypot(dynamics.vx, dynamics.vz) * 3.6 * rate;
+  $('walk-pace').textContent = `${kmh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km/h`;
+}
+
+function updateWalker(simulatedDt, frameDt) {
   const axis = (a, b, c, d) => Number(walkKeys.has(a) || walkKeys.has(b)) -
     Number(walkKeys.has(c) || walkKeys.has(d));
-  const speed = dynamics.update(dt, axis('w', 'arrowup', 's', 'arrowdown'),
+  dynamics.update(simulatedDt, axis('w', 'arrowup', 's', 'arrowdown'),
     axis('d', 'arrowright', 'a', 'arrowleft'), walkKeys.has(' '),
     (currentView.width - 1) * currentView.spacing / 2 - 4,
     (currentView.height - 1) * currentView.spacing / 2 - 4);
   walkYaw = dynamics.yaw;
-  updateWalkCamera(dt);
-  walkHudElapsed += dt;
+  updateWalkCamera(frameDt);
+  walkHudElapsed += frameDt;
   if (walkHudElapsed > 0.12) {
     const distance = dynamics.distance;
     $('walk-distance').textContent = distance < 1000 ? `${distance.toFixed(0)} m` : `${(distance / 1000).toFixed(2)} km`;
-    $('walk-pace').textContent = `${(speed * 3.6).toFixed(1)} km/h`;
+    showPlaybackSpeed();
     $('walk-ground').textContent = `${Math.round(terrainAt(rover.position.x, rover.position.z).elevation).toLocaleString()} m`;
     updateDriveTelemetry();
     walkHudElapsed = 0;
@@ -476,8 +496,13 @@ function enterWalkMode(spawn = null) {
   controls.enabled = false;
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
-  driveTelemetry.hidden = isEarth();
-  simulation.clock.start();
+  const earth = isEarth();
+  driveTelemetry.hidden = earth;
+  const paceButton = $('walk-pace').closest('button');
+  paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
+  paceButton.querySelector('span').textContent = earth ? 'SPEED' : 'PLAYBACK SPEED';
+  $('walk-ground').closest('button').dataset.method = earth ? 'earthGround' : 'ground';
+  if (!earth) simulation.clock.start();
   renderer.domElement.focus({ preventScroll: true });
   resetRover(spawn);
 }
@@ -491,6 +516,9 @@ function exitWalkMode() {
   controls.enabled = true;
   if (rover) scene.remove(rover);
   keyLight.castShadow = false;
+  keyLight.intensity = 4;
+  keyLight.position.copy(sunOffset);
+  keyLight.target.position.set(0, 0, 0);
   if (siteMarker) siteMarker.visible = true;
   document.querySelector('.app-shell').classList.remove('walk-mode');
   $('walk-hud').hidden = true;
@@ -702,6 +730,7 @@ const movementKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrow
 addEventListener('keydown', event => {
   if (!walkMode) return;
   const key = event.key.toLowerCase();
+  if (document.querySelector('.lunar-date-dialog[open], .lunar-method-dialog[open]')) return;
   if (key === 'escape') { exitWalkMode(); return; }
   if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, summary')) return;
   if (key === 't' && !event.repeat) { toggleWorld(); return; }
@@ -729,11 +758,12 @@ addEventListener('resize', () => {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(walkClock.getDelta(), 0.05);
   if (walkMode) {
-    // Drive controls keep their existing real-time pace at every time warp.
-    if (simulation.clock.running) updateWalker(dt);
+    const earth = isEarth();
+    if (earth) updateWalker(dt, dt);
+    else if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
     else updateWalkCamera(dt);
     keyLight.target.position.copy(rover.position);
-    keyLight.position.copy(rover.position).add(sunOffset);
+    keyLight.position.copy(rover.position).add(earth ? sunOffset : driveSunOffset);
   } else {
     controls.update();
   }

@@ -84,9 +84,9 @@
         <button class="walk-exit" id="walk-exit" type="button">Exit drive <kbd>Esc</kbd></button>
       </div>
       <div class="walk-readouts">
-        <div><span>TRAVERSED</span><strong id="walk-distance">0 m</strong></div>
-        <div><span>SPEED</span><strong id="walk-pace">0.0 km/h</strong></div>
-        <div><span>GROUND</span><strong id="walk-ground">— m</strong></div>
+        <div><button type="button" class="telemetry-method" data-method="traverse" aria-haspopup="dialog"><span>TRAVERSED</span><strong id="walk-distance">0 m</strong></button></div>
+        <div><button type="button" class="telemetry-method" data-method="velocity" aria-haspopup="dialog"><span>PLAYBACK SPEED</span><strong id="walk-pace">0.0 km/h</strong></button></div>
+        <div><button type="button" class="telemetry-method" data-method="ground" aria-haspopup="dialog"><span>GROUND</span><strong id="walk-ground">— m</strong></button></div>
       </div>
       <div class="walk-instructions"><b>W / S</b> drive / reverse <i>·</i> <b>A / D</b> steer <i>·</i> <b>SPACE</b> brake <i>·</i> <b>R</b> reset <i>·</i> drag to orbit <i>·</i> scroll to zoom</div>
     </section>
