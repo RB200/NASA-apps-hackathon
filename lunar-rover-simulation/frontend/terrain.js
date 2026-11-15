@@ -1,4 +1,4 @@
-import { loadRover, RoverDynamics } from './rover.js?v=steering';
+import { loadRover, RoverDynamics } from './rover.js?v=ground-contact';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 

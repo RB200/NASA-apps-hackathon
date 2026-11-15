@@ -153,47 +153,62 @@ export class RoverDynamics {
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     const relativeSpeed = this.vx * s - this.vz * c;
     const slip = this.vx * c + this.vz * s;
-    let lift = 0, slopeFront = 0, slopeSide = 0, highest = -Infinity;
-    for (const [x, z] of contacts) {
-      const ground = this.terrain(p.x + c*x - s*z, p.z + s*x + c*z).y;
-      const rest = ground + 1 + Math.sin(this.pitch)*z - Math.sin(this.roll)*x;
-      highest = Math.max(highest, rest);
-      lift += clamp((rest - p.y + 0.16) * 10 - this.vy * 3, 0, 8) / contacts.length;
-      slopeFront += ground * (z - 0.469) / (4 * 1.701 ** 2);
-      slopeSide += ground * x / (6 * 1.701 ** 2);
+    const grounded = this.body.userData.wheels.some(({ carrier }) =>
+      this.wheelClearance(carrier, carrier.position.y) >= -0.02);
+    let lift = 0, slopeFront = 0, slopeSide = 0;
+    let turn = 0;
+    if (grounded) {
+      for (const [x, z] of contacts) {
+        const ground = this.terrain(p.x + c*x - s*z, p.z + s*x + c*z).y;
+        const rest = ground + 1 + Math.sin(this.pitch)*z - Math.sin(this.roll)*x;
+        lift += clamp((rest - p.y + 0.16) * 10 - this.vy * 3, 0, 8) / contacts.length;
+        slopeFront += ground * (z - 0.469) / (4 * 1.701 ** 2);
+        slopeSide += ground * x / (6 * 1.701 ** 2);
+      }
+      const grip = clamp(lift * 0.82, 0, 3);
+      const desired = throttle > 0 ? 15 : -5;
+      const motor = throttle && !brake ? clamp((desired - relativeSpeed) * 1.5, -2.8, 2.8) : 0;
+      const rolling = relativeSpeed * (brake ? 9 : 0.09);
+      const forwardForce = clamp(motor - rolling, -grip, grip) + gravity * slopeFront;
+      const contact = clamp(lift / gravity, 0, 1);
+      const forwardSpeed = relativeSpeed + forwardForce * step;
+      // Steer the velocity with the chassis while the tires have ground contact.
+      const turnRate = steer * clamp(forwardSpeed / 4.2, -1.15, 1.15) * contact;
+      turn = turnRate * step;
+      const lateralSpeed = damp(slip, 0, 14 * contact, step) - gravity * slopeSide * step;
+      this.yaw += turn;
+      const nextSin = Math.sin(this.yaw), nextCos = Math.cos(this.yaw);
+      this.vx = nextSin * forwardSpeed + nextCos * lateralSpeed;
+      this.vz = -nextCos * forwardSpeed + nextSin * lateralSpeed;
     }
-    const grip = clamp(lift * 0.82, 0, 3);
-    const desired = throttle > 0 ? 15 : -5;
-    const motor = throttle && !brake ? clamp((desired - relativeSpeed) * 1.5, -2.8, 2.8) : 0;
-    const rolling = relativeSpeed * (brake ? 9 : 0.09);
-    const forwardForce = clamp(motor - rolling, -grip, grip) + gravity * slopeFront;
-    const contact = clamp(lift / gravity, 0, 1);
-    const forwardSpeed = relativeSpeed + forwardForce * step;
-    // Steer the velocity with the chassis while the tires have ground contact.
-    const turnRate = steer * clamp(forwardSpeed / 4.2, -1.15, 1.15) * contact;
-    const turn = turnRate * step;
-    const lateralSpeed = damp(slip, 0, 14 * contact, step) - gravity * slopeSide * step;
-    this.yaw += turn;
-    const nextSin = Math.sin(this.yaw), nextCos = Math.cos(this.yaw);
-    this.vx = nextSin * forwardSpeed + nextCos * lateralSpeed;
-    this.vz = -nextCos * forwardSpeed + nextSin * lateralSpeed;
     const x = clamp(p.x + this.vx * step, -limitX, limitX);
     const z = clamp(p.z + this.vz * step, -limitZ, limitZ);
     if (Math.abs(x) >= limitX) this.vx = 0;
     if (Math.abs(z) >= limitZ) this.vz = 0;
-    const travel = (x - p.x) * nextSin - (z - p.z) * nextCos;
+    const travel = (x - p.x) * Math.sin(this.yaw) - (z - p.z) * Math.cos(this.yaw);
     this.distance += Math.hypot(x - p.x, z - p.z);
 
     this.vy += (lift - gravity) * step;
-    const floor = highest - 0.5;
-    const y = Math.max(floor, p.y + this.vy * step);
-    if (y === floor && this.vy < 0) this.vy = 0;
-    p.set(x, y, z);
-    this.pitch = damp(this.pitch, -Math.atan(slopeFront), 5, step);
-    this.roll = damp(this.roll, Math.atan(slopeSide), 5, step);
-    this.body.rotation.set(this.pitch, -this.yaw, this.roll);
+    p.set(x, p.y + this.vy * step, z);
+    if (grounded) {
+      this.pitch = damp(this.pitch, -Math.atan(slopeFront), 5, step);
+      this.roll = damp(this.roll, Math.atan(slopeSide), 5, step);
+      this.body.rotation.set(this.pitch, -this.yaw, this.roll);
+    }
 
     this.updateSuspension(travel, turn);
+  }
+
+  wheelClearance(carrier, height) {
+    const { position, quaternion } = this.body;
+    let clearance = -Infinity;
+    for (const tread of treadSamples) {
+      contactPoint.set(carrier.position.x, height, carrier.position.z)
+        .add(tread).applyQuaternion(quaternion).add(position);
+      const ground = this.terrain(contactPoint.x, contactPoint.z).y;
+      clearance = Math.max(clearance, ground + 0.01 - contactPoint.y);
+    }
+    return clearance;
   }
 
   updateSuspension(travel = 0, turn = 0) {
@@ -201,13 +216,7 @@ export class RoverDynamics {
     const up = Math.max(0.001, suspensionUp.set(0, 1, 0).applyQuaternion(quaternion).y);
     let chassisLift = 0;
     for (const { carrier, tirePivot } of this.body.userData.wheels) {
-      let clearance = -Infinity;
-      for (const tread of treadSamples) {
-        contactPoint.set(carrier.position.x, axleHeight, carrier.position.z)
-          .add(tread).applyQuaternion(quaternion).add(position);
-        const ground = this.terrain(contactPoint.x, contactPoint.z).y;
-        clearance = Math.max(clearance, ground + 0.01 - contactPoint.y);
-      }
+      const clearance = this.wheelClearance(carrier, axleHeight);
 
       const required = clearance / up;
       const offset = carrier.position.y - axleHeight;
