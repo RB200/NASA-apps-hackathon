@@ -1,8 +1,8 @@
-import { loadRover, RoverDynamics, setGravity } from './rover.js?v=moon-sites-earth-light-1';
+import { loadRover, RoverDynamics, setGravity } from './rover.js?v=lunar-skybox-headlights-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
   mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=lunar-skybox-earth-light-1';
-import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=moon-sites-earth-light-1';
+  mountHideUi, loadMoonRegionStats, updateEarthLighting } from './earth.js?v=lunar-skybox-headlights-1';
+import { mountLunarSimulation, earthSolarGeometry } from '../../frontend/lunar-simulation.js?v=lunar-skybox-headlights-1';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -70,6 +70,7 @@ let verticalExaggeration = 2;
 let walkMode = false;
 let rover = null;
 let dynamics = null;
+let headlightLevel = -1;
 let cameraOrbit = 0;
 const DEFAULT_WALK_CAMERA_DISTANCE = 15;
 const MIN_WALK_CAMERA_DISTANCE = 8;
@@ -542,6 +543,16 @@ function enterWalkMode(spawn = null) {
   resetRover(spawn);
 }
 
+function setHeadlightLevel(level) {
+  const next = THREE.MathUtils.clamp(level, 0, 1);
+  if (Math.abs(next - headlightLevel) < 0.005) return;
+  headlightLevel = next;
+  for (const { light, lensMaterial } of rover?.userData.headlights ?? []) {
+    light.intensity = 3200 * next;
+    lensMaterial.emissiveIntensity = 3 * next;
+  }
+}
+
 function exitWalkMode() {
   if (!walkMode) return;
   walkMode = false;
@@ -834,11 +845,16 @@ renderer.setAnimationLoop(() => {
       if (sun) {
         sunOffset.set(sun.east, sun.up, -sun.north).normalize().multiplyScalar(36);
         updateEarthLighting(scene, sun.elevation, { hemi: scene.children.find(o => o.isHemisphereLight), keyLight, fillLight });
+        setHeadlightLevel(1 - THREE.MathUtils.smoothstep(sun.elevation, -8, -2));
       }
+      else setHeadlightLevel(1);
       updateWalker(dt, dt);
     }
-    else if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
-    else updateWalkCamera(dt);
+    else {
+      setHeadlightLevel(1); // lunar rover lamps remain on throughout the Moon simulation
+      if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
+      else updateWalkCamera(dt);
+    }
     keyLight.target.position.copy(rover.position);
     keyLight.position.copy(rover.position).add(earth ? sunOffset : driveSunOffset);
   } else {
