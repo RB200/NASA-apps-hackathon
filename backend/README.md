@@ -27,8 +27,9 @@ One row per 20 × 20 km patch, DEM resampled to ~100 m/pixel.
 | `p90Slope` | 90th-percentile slope, degrees |
 | `roughness` | std dev of elevation, m |
 | `relief` | max − min elevation, m |
-| `bareFrac` | fraction of patch that is WorldCover class 60 (0–1). Optional if you already filtered. Patches < 0.70 are dropped. |
-| `snowFrac` | fraction that is WorldCover class 70 snow/ice (0–1). Optional. ≥ 0.10 is dropped unless the user ticks "Include snow / ice". |
+| `bareFrac` | fraction of patch that is MODIS IGBP class 16 Barren (0–1). Optional if you already filtered. Patches < 0.70 are dropped. |
+| `snowFrac` | fraction that is MODIS IGBP class 15 snow/ice (0–1). Optional. ≥ 0.10 is dropped unless the user ticks "Include snow / ice". |
+| `demSource` | `NASADEM`, `Copernicus` or `NASADEM+Copernicus`; shown in the detail view. Optional. |
 | `name`, `country` | optional labels; blank → frontend shows coordinates |
 
 ### `moon_regions.json` (from the LOLA DEM)
@@ -42,5 +43,5 @@ Same 4 descriptors, same window size and pixel size, keyed by the region ids in 
 1. Keep bare-ground patches (and no snow unless asked).
 2. For each feature, distance = |Earth − Moon| / (std of that feature across kept Earth patches).
 3. Per-feature score = 100 × (1 − distance / 2), clipped to 0–100 (2 std apart = 0).
-4. Match % = rank-weighted average over the picked constraints (1st of n gets n, 2nd n−1, …).
+4. Match % = rank-weighted **geometric** mean of the picked constraints' scores (1st of n gets weight n, 2nd n−1, …; scores floored at 1). Unlike a plain average, one far-off feature drags the total down hard (100, 100, 100, 0 → ~32%, not 75%), while all-decent scores barely change.
 5. Top N, skipping any patch within 100 km of one already picked, so results aren't 5 tiles of the same range.

@@ -28,12 +28,13 @@ Write me a Python script that computes terrain descriptors for 9 lunar south-pol
    - `p90Slope` = 90th-percentile slope (degrees)
    - `roughness` = standard deviation of elevation in the window (meters)
    - `relief` = max − min elevation in the window (meters)
+   - `shape` = (mean − min) / (max − min) of elevation in the window (hypsometric integral, 0–1; ~0.2 isolated peak, ~0.8 plateau or high ground around a crater)
 
 ## Output
 Write `moon_regions.json` with exactly these keys, numbers rounded to 2 decimals:
 ```json
 {
-  "haworth": { "meanSlope": 0.0, "p90Slope": 0.0, "roughness": 0.0, "relief": 0.0 },
+  "haworth": { "meanSlope": 0.0, "p90Slope": 0.0, "roughness": 0.0, "relief": 0.0, "shape": 0.0 },
   ...all 9 region ids...
 }
 ```

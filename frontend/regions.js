@@ -20,6 +20,8 @@ export const CONSTRAINTS = [
   { key: 'p90Slope',    group: 'Topography',  label: 'Steepest areas',  hint: '90th-percentile slope',         unit: '°', scale: 20 },
   { key: 'roughness',   group: 'Topography',  label: 'Roughness',       hint: 'How bumpy (std dev of height)', unit: ' m', scale: 300 },
   { key: 'relief',      group: 'Topography',  label: 'Relief',          hint: 'Highest minus lowest point',    unit: ' m', scale: 1500 },
+  // Hypsometric integral: ~0.2 isolated peak/cone, ~0.5 even slope, ~0.8 plateau / high ground around a crater
+  { key: 'shape',       group: 'Topography',  label: 'Shape',           hint: 'Crater/plateau vs peak',        unit: '',   scale: 0.25, digits: 2 },
   { key: 'temperature', group: 'Environment', label: 'Temperature',     hint: 'Data not added yet',            unit: ' K', scale: 100, pending: true },
 ];
 

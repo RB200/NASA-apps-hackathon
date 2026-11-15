@@ -143,15 +143,23 @@ function refreshHighlight() {
 // ---------- Panel 1: ranked constraints ----------
 let priorities = []; // constraint keys, most important first
 
+// Which features have data on both Moon and Earth: the backend says so; without it, the sample set.
+let available = new Set(['meanSlope', 'p90Slope', 'roughness', 'relief']);
+fetch(`${API_BASE}/health`).then(r => r.json()).then(h => {
+  if (h.features) available = new Set(h.features);
+  if (selected) renderOptions();
+}).catch(() => {});
+const usable = c => !c.pending && available.has(c.key);
+
 function renderOptions() {
   const groups = [...new Set(CONSTRAINTS.map(c => c.group))];
   $('options').innerHTML = groups.map(g => `
     <div class="group"><span class="group-name">${g}</span>
       ${CONSTRAINTS.filter(c => c.group === g).map(c => `
-        <label class="opt ${c.pending ? 'pending' : ''}">
-          <input type="checkbox" value="${c.key}" ${priorities.includes(c.key) ? 'checked' : ''} ${c.pending ? 'disabled' : ''}>
-          <span><b>${c.label}</b><small>${c.hint}</small></span>
-          ${c.pending ? '<em>soon</em>' : ''}
+        <label class="opt ${usable(c) ? '' : 'pending'}">
+          <input type="checkbox" value="${c.key}" ${priorities.includes(c.key) ? 'checked' : ''} ${usable(c) ? '' : 'disabled'}>
+          <span><b>${c.label}</b><small>${c.pending ? c.hint : usable(c) ? c.hint : 'Waiting for Moon + Earth data'}</small></span>
+          ${usable(c) ? '' : '<em>soon</em>'}
         </label>`).join('')}
     </div>`).join('');
   $('options').querySelectorAll('input').forEach(cb => cb.onchange = () => {
@@ -229,12 +237,14 @@ function sampleMatch(regionId, w, n) {
   const moon = sampleMoon(regionId);
   const matches = SAMPLE_EARTH.map(e => {
     const features = {};
-    let match = 0;
+    let logSum = 0, wSum = 0;
     for (const k of Object.keys(moon)) {
       const score = Math.max(0, 100 * (1 - Math.abs(e[k] - moon[k]) / C[k].scale));
       features[k] = { moon: moon[k], earth: e[k], score };
-      match += (w[k] ?? 0) * score;
+      if (w[k]) { logSum += w[k] * Math.log(Math.max(score, 1)); wSum += w[k]; }
     }
+    // Weighted geometric mean, same rule as the backend: one far-off feature drags the match down.
+    const match = wSum ? Math.exp(logSum / wSum) : 0;
     return { id: e.id, name: e.name, country: e.country, lat: e.lat, lon: e.lon, match, features };
   }).sort((a, b) => b.match - a.match).slice(0, n);
   return { region: regionId, constraints: Object.keys(w), matches, sample: true };
@@ -272,7 +282,10 @@ let map = null;
 function showList() { $('list-view').hidden = false; $('detail-view').hidden = true; }
 $('back').onclick = showList;
 
-function fmt(k, v) { return `${v >= 100 ? Math.round(v) : v.toFixed(1)}${C[k].unit}`; }
+function fmt(k, v) {
+  const d = C[k].digits ?? (v >= 100 ? 0 : 1);
+  return `${v.toFixed(d)}${C[k].unit}`;
+}
 
 function missionFit(f) {
   const p90 = f.p90Slope.earth, rough = f.roughness.earth, relief = f.relief.earth;
@@ -285,7 +298,8 @@ function showDetail(m) {
   $('list-view').hidden = true;
   $('detail-view').hidden = false;
   $('d-name').textContent = m.name;
-  $('d-meta').textContent = `${m.country ? m.country + ' · ' : ''}${m.lat.toFixed(2)}°, ${m.lon.toFixed(2)}° · 20 × 20 km patch`;
+  $('d-meta').textContent = `${m.country ? m.country + ' · ' : ''}${m.near ? 'near ' + m.near + ' · ' : ''}${m.lat.toFixed(2)}°, ${m.lon.toFixed(2)}° · 20 × 20 km patch` +
+    (m.demSource ? ` · elevation: ${m.demSource}` : '');
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '');
 

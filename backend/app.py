@@ -21,7 +21,8 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-FEATURES = ["meanSlope", "p90Slope", "roughness", "relief"]
+CORE_FEATURES = ["meanSlope", "p90Slope", "roughness", "relief"]
+OPTIONAL_FEATURES = ["shape"]  # used only when both the Earth CSV and every Moon region have it
 MIN_BARE = 0.70          # keep a patch only if >= 70% bare ground
 MAX_SNOW = 0.10          # "no snow/ice" means < 10% snow/ice cover
 MIN_SEPARATION_KM = 100  # don't return 5 neighbouring patches of the same mountain range
@@ -43,11 +44,15 @@ def _float(v: str, default: float = float("nan")) -> float:
         return default
 
 
-def load_earth(path: Path) -> dict:
+def read_rows(path: Path) -> list[dict]:
     with open(path, newline="") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         raise RuntimeError(f"{path} is empty")
+    return rows
+
+
+def load_earth(path: Path, rows: list[dict]) -> dict:
     missing = [c for c in ["lat", "lon", *FEATURES] if c not in rows[0]]
     if missing:
         raise RuntimeError(f"{path} is missing columns: {missing}")
@@ -57,8 +62,10 @@ def load_earth(path: Path) -> dict:
         "X": np.array([[_float(r[k]) for k in FEATURES] for r in rows]),
         "bare": np.array([_float(r.get("bareFrac"), 1.0) for r in rows]),   # column optional if pre-filtered
         "snow": np.array([_float(r.get("snowFrac"), 0.0) for r in rows]),
+        "demSource": [(r.get("demSource") or "").strip() or None for r in rows],
         "name": [(r.get("name") or "").strip() or None for r in rows],
         "country": [(r.get("country") or "").strip() or None for r in rows],
+        "near": [(r.get("near") or "").strip() or None for r in rows],
     }
 
 
@@ -69,8 +76,12 @@ def load_moon(path: Path) -> dict[str, dict[str, float]]:
 
 EARTH_PATH, EARTH_SAMPLE = _pick("earth_patches.csv")
 MOON_PATH, MOON_SAMPLE = _pick("moon_regions.json")
-EARTH = load_earth(EARTH_PATH)
 MOON = load_moon(MOON_PATH)
+_earth_rows = read_rows(EARTH_PATH)
+FEATURES = CORE_FEATURES + [f for f in OPTIONAL_FEATURES
+                            if f in _earth_rows[0] and all(f in v for v in MOON.values())]
+EARTH = load_earth(EARTH_PATH, _earth_rows)
+del _earth_rows
 IS_SAMPLE = EARTH_SAMPLE or MOON_SAMPLE
 SAMPLE_PARTS = [name for name, s in (("earth", EARTH_SAMPLE), ("moon", MOON_SAMPLE)) if s]
 
@@ -94,6 +105,18 @@ def rank_weights(constraints: list[str]) -> np.ndarray:
     return w
 
 
+def combine(scores: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Match % = weighted GEOMETRIC mean of per-feature scores (floored at 1).
+
+    An arithmetic mean let one completely wrong feature hide behind good ones
+    (scores 100,100,100,0 → 75%). The geometric mean drags that down to ~32%,
+    while all-decent scores barely change (90,80,85 → ~85%).
+    """
+    used = w > 0
+    logs = np.log(np.maximum(scores[:, used], 1.0))
+    return np.exp((logs * w[used]).sum(axis=1) / w[used].sum())
+
+
 def match(region: str, constraints: list[str], n: int, include_snow: bool) -> dict:
     moon = np.array([MOON[region][k] for k in FEATURES])
 
@@ -110,7 +133,7 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
     std[std == 0] = 1.0
     dz = np.abs(X - moon) / std
     scores = np.clip(100 * (1 - dz / 2), 0, 100)          # per-feature 0..100
-    total = scores @ rank_weights(constraints)             # weighted match %
+    total = combine(scores, rank_weights(constraints))
 
     order = np.argsort(-total)
     picked: list[int] = []
@@ -128,10 +151,12 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
             "id": f"{EARTH['lat'][i]:.3f},{EARTH['lon'][i]:.3f}",
             "name": EARTH["name"][i],
             "country": EARTH["country"][i],
+            "near": EARTH["near"][i],
             "lat": float(EARTH["lat"][i]),
             "lon": float(EARTH["lon"][i]),
             "match": round(float(total[j]), 1),
             "bareFrac": float(EARTH["bare"][i]),
+            "demSource": EARTH["demSource"][i],
             "features": {
                 k: {"moon": float(moon[f]), "earth": float(X[j, f]), "score": round(float(scores[j, f]), 1)}
                 for f, k in enumerate(FEATURES)
@@ -144,6 +169,7 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
 def health():
     return {"ok": True, "sample": IS_SAMPLE, "sampleParts": SAMPLE_PARTS,
             "earthFile": str(EARTH_PATH), "moonFile": str(MOON_PATH), "earthPatches": len(EARTH["lat"]),
+            "features": FEATURES,
             "moonRegions": sorted(MOON)}
 
 

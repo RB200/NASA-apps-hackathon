@@ -8,9 +8,10 @@ Leaves name/country blank; the frontend shows coordinates for unnamed patches.
 import csv
 import math
 import sys
+from collections import Counter
 from pathlib import Path
 
-COLUMNS = ["lat", "lon", "meanSlope", "p90Slope", "roughness", "relief", "bareFrac", "snowFrac"]
+NUMERIC = ["lat", "lon", "meanSlope", "p90Slope", "roughness", "relief", "bareFrac", "snowFrac"]
 OUT = Path(__file__).resolve().parent.parent / "backend" / "data" / "earth_patches.csv"
 
 
@@ -22,7 +23,7 @@ def main(paths):
         with open(p, newline="") as f:
             for r in csv.DictReader(f):
                 try:
-                    vals = {k: float(r[k]) for k in COLUMNS}
+                    vals = {k: float(r[k]) for k in NUMERIC}
                 except (KeyError, TypeError, ValueError):
                     bad += 1
                     continue
@@ -33,14 +34,18 @@ def main(paths):
                 if key in seen:
                     continue
                 seen.add(key)
+                vals["demSource"] = (r.get("demSource") or "").strip()
                 rows.append(vals)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(COLUMNS + ["name", "country"])
+        w.writerow(NUMERIC + ["demSource", "name", "country"])
         for v in rows:
-            w.writerow([f"{v['lat']:.4f}", f"{v['lon']:.4f}"] + [f"{v[k]:.3f}" for k in COLUMNS[2:]] + ["", ""])
+            w.writerow([f"{v['lat']:.4f}", f"{v['lon']:.4f}"] + [f"{v[k]:.3f}" for k in NUMERIC[2:]]
+                       + [v["demSource"], "", ""])
+    sources = Counter(v["demSource"] or "?" for v in rows)
     print(f"wrote {len(rows)} patches to {OUT} ({bad} bad rows skipped, {len(paths)} files)")
+    print("elevation source:", dict(sources))
 
 
 if __name__ == "__main__":

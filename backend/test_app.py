@@ -30,6 +30,13 @@ assert snow["eligible"] > r["eligible"], "include_snow had no effect"
 assert c.get("/match", params={"region": "nope", "constraints": "relief"}).status_code == 404
 assert c.get("/match", params={"region": "haworth", "constraints": "temperature"}).status_code == 400
 
+# one far-off feature must drag the match down (geometric mean), all-decent scores barely change
+import numpy as np  # noqa: E402
+w = np.array([0.25, 0.25, 0.25, 0.25])
+assert backend.combine(np.array([[100, 100, 100, 0.0]]), w)[0] < 40
+assert abs(backend.combine(np.array([[90, 80, 85, 85.0]]), w)[0] - 85) < 1
+assert abs(backend.combine(np.array([[70, 0, 0, 0.0]]), np.array([1, 0, 0, 0.0]))[0] - 70) < 1e-9  # unpicked features ignored
+
 # priority matters: plateau region with landing-style priorities should prefer flat sites
 flat = c.get("/match", params={"region": "mons-mouton", "constraints": "p90Slope,roughness", "n": 3}).json()
 print("haworth:", [(x["name"], x["match"]) for x in m])
