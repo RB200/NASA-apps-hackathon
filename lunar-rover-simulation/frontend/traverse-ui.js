@@ -355,6 +355,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, a
   return {
     get reportOpen() { return report.open; },
     start(world, start, reason, loadPair) {
+      if (!driving) panel.open = true;
       driving = true;
       const test = new Traverse(world, start);
       test.sequence = ++sequence;
