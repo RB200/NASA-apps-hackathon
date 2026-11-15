@@ -6,7 +6,7 @@ Find Earth locations that match potential Artemis III lunar south-pole base site
 
 Start the app using the quick start below, then select **Try the de Gerlache scenario** on the opening screen. The app selects de Gerlache Rim 2 and searches for Earth terrain, prioritizing steepest areas followed by roughness. Choose a result to compare measurements, change priorities and search again, or open the rover terrain viewer from the lunar telemetry panel.
 
-With the app running, open [the demo directly](http://localhost:5173/?demo=de-gerlache). If the backend is unavailable, the app labels its placeholder results as sample data.
+With the app running, open [the demo directly](http://localhost:5173/?demo=de-gerlache). If the backend is unavailable, the app labels its placeholder results as sample data; **Enter rover** still opens using the region's preset Earth terrain.
 
 ## 🚀 Quick Start (30 Seconds)
 

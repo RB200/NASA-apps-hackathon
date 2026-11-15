@@ -237,8 +237,10 @@ function showDetail(m) {
 
   // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
   const sample = lastResult.source !== 'backend';
-  $('d-rover').disabled = sample;
-  $('d-rover-note').textContent = sample ? 'needs the backend running' : 'drive this spot · toggle Moon ⇄ Earth';
+  $('d-rover').disabled = false;
+  $('d-rover-note').textContent = sample
+    ? 'sample match · preset Earth terrain offline'
+    : 'drive this spot · toggle Moon ⇄ Earth';
   $('d-rover').onclick = () => { location.href = roverLinkFor(m); };
 
   const [mission, why] = missionFit(m.features);
