@@ -36,7 +36,7 @@ With the app running, open [the demo directly](http://localhost:5173/?demo=de-ge
 This app helps find Earth locations that resemble candidate sites for the **Artemis III lunar base** (planned for the Moon's south pole).
 
 **How it works:**
-1. View the flat south-pole map showing 9 candidate regions. The browser image is a resized copy of `South_Pole.png`, registered against the previous polar map; region positions are approximate.
+1. View the flat south-pole map showing 9 candidate regions. The browser image is a resized copy of `source-assets/atlas/South_Pole.png`, registered against the previous polar map; region positions are approximate.
 2. Select a lunar region by clicking its marker or colored box
 3. Review its Earth terrain matches and select one for a detailed comparison
 4. Open the rover simulation at the selected Earth location
@@ -145,30 +145,17 @@ Remove-Item -Recurse -Force backend\.venv
 # Let START.bat recreate it
 ```
 
-## 📁 Project Structure
+## Project structure
 
-```
-NASA-apps-hackathon/
-│
-├── 🟩 START.bat              ← Double-click to run (Windows)
-├── 🟩 START.ps1              ← Alternative (PowerShell)
-├── 📘 README.md              ← This file
-│
-├── frontend/
-│   ├── index.html            ← Main web page
-│   ├── main.js               ← App logic + map controls
-│   ├── regions.js            ← Lunar regions data
-│   ├── style.css             ← Styling
-│   └── [other assets]
-│
-├── backend/
-│   ├── app.py                ← FastAPI server
-│   ├── requirements.txt       ← Python dependencies
-│   └── .venv/                ← Virtual environment (auto-created)
-│
-└── data/
-    └── [sample data]         ← Placeholder data
-```
+| Path | Contents |
+|---|---|
+| `START.command`, `START.bat`, `START.ps1` | macOS and Windows launchers |
+| [frontend/](frontend/) | Lunar atlas and its browser assets |
+| [backend/](backend/) | FastAPI service, match data, and tests |
+| [data_prep/](data_prep/) | Scripts for acquiring and preparing atlas data |
+| [lunar-rover-simulation/](lunar-rover-simulation/) | Rover viewer, browser assets, terrain preparation, and tests |
+| [source-assets/atlas/](source-assets/atlas/) | Original south-pole map image |
+| [source-assets/rover/](source-assets/rover/) | Original rover model, sky images, and surface textures |
 
 ---
 

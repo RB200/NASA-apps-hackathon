@@ -6,15 +6,13 @@
 python3 -B data_prep/prepare_lola_3d.py
 ```
 
-The Moon scene uses `frontend/assets/moon-skybox.jpg`, a browser-ready equirectangular version of the repository-root `Skybox.tif`. Earth mode keeps its separate blue sky.
-
 The app includes a 512 × 512 native-resolution tile near De Gerlache Rim 2; a 1024 × 1024 crater tile sampled at 20 m with a 512 × 512 native-resolution patch around the rover spawn; and a full-cap overview sampled every 32 source pixels (160 m). Drive mode provides a lunar rover with terrain contact and suspension on both local views. The source raster covers 87.5°S to the pole, so the detailed tiles are local rather than a full view of all nine candidate regions.
 
-Lunar drive terrain uses browser-sized color and normal maps converted from `../moon_textures/`, with uniform roughness. Randomized, blended 24 m texture samples reduce visible repetition and affect appearance only; LOLA elevations still determine terrain shape and rover contact. Earth uses its existing material.
+Lunar drive terrain uses browser-sized color and normal maps converted from `../source-assets/rover/moon_textures/`, with uniform roughness. Randomized, blended 24 m texture samples reduce visible repetition and affect appearance only; LOLA elevations still determine terrain shape and rover contact. Earth uses its existing material.
 
 The atlas link selects the paired Moon landing site and Earth analog. Nine local 1024 × 1024 tiles at 20 m/sample (20.48 km square) are extracted from LOLA `ldem_80s_20m.img` and stored in `frontend/assets/moon-sites/`. Regenerate them with `python3 -B data_prep/prepare_lunar_site_tiles.py` from this folder when the source raster is available at its default Desktop path.
 
-Lunar views use `frontend/assets/lunar-skybox.webp`, a browser-compatible equirectangular conversion of the provided `Lunar_Skybox.tif`. Earth analog mode retains its own sky.
+Lunar views use `frontend/assets/lunar-skybox.webp`, a browser-compatible equirectangular conversion of the `../source-assets/rover/Lunar_Skybox.tif`. Earth analog mode retains its own sky. The original rover model is in `../source-assets/rover/Space Exploration Vehicle.glb`.
 
 From the repository root, serve the project locally and open the viewer at `http://127.0.0.1:5175/lunar-rover-simulation/frontend/terrain.html`:
 

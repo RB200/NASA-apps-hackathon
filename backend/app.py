@@ -2,7 +2,7 @@
 
 Run:  backend/.venv/bin/uvicorn app:app --app-dir backend --reload --port 8000
 
-Data (see README / CLAUDE.md for formats):
+Data (see backend/README.md for formats):
   data/earth_patches.csv   one row per 20x20 km Earth patch (from Earth Engine export)
   data/moon_regions.json   descriptors per Artemis III region (from LOLA DEM)
 Each missing file falls back to data/sample/ on its own; responses then have "sample": true

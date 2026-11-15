@@ -232,7 +232,7 @@ $('demo').onclick = startDemo;
 if (new URLSearchParams(location.search).get('demo') === 'de-gerlache') startDemo();
 
 // Client-side version of the scoring, used with placeholder data only.
-// Same response shape the backend should return (see CLAUDE.md "API contract").
+// Matches the shape of the /match response in backend/app.py.
 function sampleMatch(regionId, w, n) {
   const moon = sampleMoon(regionId);
   const matches = SAMPLE_EARTH.map(e => {
