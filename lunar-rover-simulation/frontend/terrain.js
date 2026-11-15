@@ -733,6 +733,7 @@ function setHeadlightLevel(level) {
 function exitWalkMode() {
   if (!walkMode) return;
   walkMode = false;
+  sliderPointer = null;
   renderer.setPixelRatio(overviewPixelRatio);
   traverse.leave();
   walkKeys.clear();
@@ -1031,19 +1032,48 @@ renderer.domElement.addEventListener('wheel', event => {
   event.preventDefault();
 }, { passive: false });
 
-const movementKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
+const rangeSelector = 'input[type="range"]';
+let sliderPointer = null;
+addEventListener('pointerdown', event => {
+  if (walkMode && event.isPrimary && event.button === 0 && event.target.matches?.(rangeSelector)) {
+    sliderPointer = { id: event.pointerId, slider: event.target };
+  }
+}, true);
+
+function finishSliderDrag(event) {
+  if (sliderPointer?.id !== event.pointerId) return;
+  const { slider } = sliderPointer;
+  sliderPointer = null;
+  // Let the native slider finish its pointer action before moving focus.
+  requestAnimationFrame(() => {
+    if (walkMode && !sliderPointer && document.activeElement === slider) {
+      renderer.domElement.focus({ preventScroll: true });
+    }
+  });
+}
+addEventListener('pointerup', finishSliderDrag, true);
+addEventListener('pointercancel', finishSliderDrag, true);
+
+const driveLetterKeys = new Set(['w', 'a', 's', 'd']);
+const movementKeys = new Set([...driveLetterKeys, 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
 addEventListener('keydown', event => {
   if (!walkMode || traverse.reportOpen) return;
   const key = event.key.toLowerCase();
   if (document.querySelector('.lunar-method-dialog[open]')) return;
   if (key === 'escape') { exitWalkMode(); return; }
-  if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, select, summary')) return;
+  // A keyboard-focused range keeps its native arrow controls. WASD can still drive.
+  const drivingFromSlider = event.target.matches?.(rangeSelector) && driveLetterKeys.has(key);
+  if (!drivingFromSlider &&
+      (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, select, summary'))) return;
   if (key === 't' && !event.repeat) { toggleWorld(); return; }
   if (key === 'r' && !event.repeat) simulation.reset({ resume: simulation.clock.read().running });
   if (movementKeys.has(key)) { walkKeys.add(key); event.preventDefault(); }
 });
 addEventListener('keyup', event => walkKeys.delete(event.key.toLowerCase()));
-addEventListener('blur', () => walkKeys.clear());
+addEventListener('blur', () => {
+  walkKeys.clear();
+  sliderPointer = null;
+});
 
 $('exaggeration').addEventListener('input', event => {
   verticalExaggeration = Number(event.target.value);
