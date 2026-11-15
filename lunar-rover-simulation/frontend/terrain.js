@@ -1,4 +1,4 @@
-import { mountTraverse } from './traverse-ui.js?v=environment-clock-2';
+import { mountTraverse } from './traverse-ui.js?v=traverse-open-1';
 import { gridTriangle, traverseTile } from './traverse.mjs?v=environment-1';
 import { loadRover, RoverDynamics, setGravity } from './rover.js?v=traverse-1';
 import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
