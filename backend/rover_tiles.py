@@ -11,12 +11,14 @@ Built tiles are cached in data_prep/cache/rover_tiles/.
 from __future__ import annotations
 
 import math
+import ssl
 import tempfile
 import threading
 import zipfile
 import urllib.request
 from pathlib import Path
 
+import certifi
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,7 +84,12 @@ def _copernicus(lat0: int, lon0: int) -> Path:
         with tempfile.NamedTemporaryFile(dir=folder, suffix='.part', delete=False) as file:
             temporary = Path(file.name)
         try:
-            with urllib.request.urlopen(f"{COPERNICUS}/{name}/{name}.tif", timeout=90) as response, temporary.open('wb') as target:
+            # Some Python installations have no public CA bundle configured.
+            # Keep the default trust store and add the bundled public roots.
+            context = ssl.create_default_context()
+            context.load_verify_locations(cafile=certifi.where())
+            url = f"{COPERNICUS}/{name}/{name}.tif"
+            with urllib.request.urlopen(url, timeout=90, context=context) as response, temporary.open('wb') as target:
                 import shutil
                 shutil.copyfileobj(response, target)
             temporary.replace(path)
