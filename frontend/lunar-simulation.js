@@ -1,25 +1,27 @@
 const DEG = Math.PI / 180;
 const DAY_MS = 86_400_000;
 const J2000 = Date.UTC(2000, 0, 1, 12);
-const SPEEDS = [1, 60, 3600, 21600, 86400];
+const SPEEDS = [[0, 1], [68, 16], [100, 60], [200, 3600], [300, 21600], [400, 86400]];
+export const DRIVE_SLIDER_MAX = 68;
 const CLOCK_GAIN_PER_DAY_US = 56.02; // Ashby & Patla, NIST, Table II (pub. 957328).
 const sin = degrees => Math.sin(degrees * DEG);
 const cos = degrees => Math.cos(degrees * DEG);
 
 export function speedAt(position) {
-  const index = Math.min(Math.floor(position / 100), SPEEDS.length - 2);
-  const fraction = position / 100 - index;
-  return SPEEDS[index] * (SPEEDS[index + 1] / SPEEDS[index]) ** fraction;
+  const index = SPEEDS.findIndex(([stop]) => stop >= position && stop > 0);
+  const [left, slow] = SPEEDS[index - 1];
+  const [right, fast] = SPEEDS[index];
+  return slow * (fast / slow) ** ((position - left) / (right - left));
 }
 
-export function createLunarClock(start, now = () => performance.now()) {
+export function createLunarClock(start, now = () => performance.now(), frameDriven = false) {
   let epoch = start;
   let elapsed = 0;
   let anchor = null;
   let speed = 1;
 
   function elapsedAt(time) {
-    return elapsed + (anchor === null ? 0 : (time - anchor) * speed);
+    return elapsed + (anchor === null || frameDriven ? 0 : (time - anchor) * speed);
   }
 
   return {
@@ -29,6 +31,12 @@ export function createLunarClock(start, now = () => performance.now()) {
       return { epoch, elapsed: progress, utc: epoch + progress, speed, running: anchor !== null };
     },
     start() { anchor ??= now(); },
+    advance(realMs) {
+      if (!frameDriven || anchor === null) return 0;
+      const simulatedMs = realMs * speed;
+      elapsed += simulatedMs;
+      return simulatedMs;
+    },
     pause() {
       elapsed = elapsedAt(now());
       anchor = null;
@@ -100,9 +108,13 @@ function solarGeometry(utc, lat, lon) {
   const node = -sin(ra) * sunX + cos(ra) * sunY;
   const equator = -sin(dec) * (cos(ra) * sunX + sin(ra) * sunY) + cos(dec) * sunZ;
   const pole = cos(dec) * (cos(ra) * sunX + sin(ra) * sunY) + sin(dec) * sunZ;
-  const up = cos(lat) * (cos(meridian + lon) * node + sin(meridian + lon) * equator)
-    + sin(lat) * pole;
+  const angle = meridian + lon;
+  const horizontal = cos(angle) * node + sin(angle) * equator;
+  const up = cos(lat) * horizontal + sin(lat) * pole;
   return {
+    east: -sin(angle) * node + cos(angle) * equator,
+    north: -sin(lat) * horizontal + cos(lat) * pole,
+    up,
     elevation: Math.asin(Math.max(-1, Math.min(1, up))) / DEG,
     irradiance: 1361 * Math.max(0, up) / distanceAu ** 2,
   };
@@ -110,7 +122,8 @@ function solarGeometry(utc, lat, lon) {
 
 export function lunarEnvironment(utc, lat, lon) {
   if (![utc, lat, lon].every(Number.isFinite) || Math.abs(lat) > 90) return null;
-  const { elevation, irradiance } = solarGeometry(utc, lat, lon);
+  const geometry = solarGeometry(utc, lat, lon);
+  const { elevation, irradiance } = geometry;
 
   // Illustrative thermal inertia: weight recent horizontal solar flux, then
   // apply grey-body radiative equilibrium with 12% albedo, 0.95 emissivity,
@@ -120,23 +133,117 @@ export function lunarEnvironment(utc, lat, lon) {
     flux += weight * solarGeometry(utc - hours * 3_600_000, lat, lon).irradiance;
   }
   const temperature = (90 ** 4 + 0.88 * flux / (0.95 * 5.670374419e-8)) ** 0.25 - 273.15;
-  return { elevation, irradiance, temperature, sunlight: elevation > 0 ? 'Sunlit' : 'Geometrically below horizon' };
+  return { ...geometry, temperature, sunlight: elevation > 0 ? 'Sunlit' : 'Geometrically below horizon' };
 }
 
 const utcInputValue = utc => new Date(utc).toISOString().slice(0, 16);
 const formatSpeed = speed => speed.toLocaleString('en-US', { maximumSignificantDigits: 4 });
 
-export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordinateDigits = 5 } = {}) {
+const MOON_FACTS = ['NASA Moon Fact Sheet', 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html'];
+const LOLA = ['NASA PDS · LRO LOLA', 'https://pds-geosciences.wustl.edu/missions/lro/lola_faq.htm'];
+const SOLAR_SOURCES = [
+  ['USNO solar coordinates', 'https://aa.usno.navy.mil/faq/sun_approx'],
+  ['JPL lunar orientation constants', 'https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc'],
+];
+const ROVER_SOURCE = ['Project rover model', 'https://github.com/RB200/NASA-apps-hackathon/blob/main/lunar-rover-simulation/frontend/rover.js'];
+
+const METHODS = {
+  utc: ['Simulation UTC', 'The clock adds accumulated simulated time to your chosen start date.', { plain: 'UTC = start UTC + Σ(elapsed playback × rate)', tex: String.raw`t_{\mathrm{UTC}}=t_{\mathrm{start}}+\sum_i \Delta t_i\,r_i` }],
+  speed: ['Time acceleration', 'The slider changes how much simulated time passes per playback second.', { plain: 'Simulated seconds = playback seconds × rate', tex: String.raw`\Delta t_{\mathrm{sim}}=r\,\Delta t_{\mathrm{playback}}` }],
+  coordinates: ['Latitude and longitude', 'The atlas uses a selected region center. The rover converts its position on the LOLA polar grid to coordinates. E and N are projected offsets, and R is the lunar reference radius.', { plain: 'Latitude = −90° + 2 atan(√(E² + N²) / 2R) · Longitude = atan2(E, N)', tex: String.raw`\begin{aligned}\varphi &=-90^\circ+\frac{360^\circ}{\pi}\arctan\!\left(\frac{\sqrt{E^2+N^2}}{2R}\right)\\\lambda &=\operatorname{atan2}(E,N)\times\frac{180^\circ}{\pi}\end{aligned}` }, LOLA],
+  temperature: ['Estimated surface temperature', 'A simple thermal model blends current and recent sunlight at this location. It assumes a 90 K dark baseline, 12% albedo and 0.95 emissivity.', { plain: 'T (°C) ≈ [90⁴ + 0.88 × weighted sunlight / (0.95σ)]¹⁄⁴ − 273.15', tex: String.raw`\begin{aligned}T_{\!^\circ\mathrm{C}}&\approx\left[90^4+\frac{0.88\,F_{\mathrm{weighted}}}{0.95\,\sigma}\right]^{1/4}\\&\quad-273.15\end{aligned}` }, ['NIST Stefan–Boltzmann constant', 'https://physics.nist.gov/cgi-bin/cuu/Value?sigma']],
+  solar: ['Estimated solar elevation', 'The model converts the Sun’s direction to the lunar frame, then measures its angle above the local horizontal.', { plain: 'Elevation = arcsin(Sun unit vector · local up)', tex: String.raw`\alpha=\arcsin\!\left(\hat{\boldsymbol{s}}\cdot\hat{\boldsymbol{u}}\right)` }, ...SOLAR_SOURCES],
+  sunlight: ['Geometric sunlight', 'The flag uses the center of the Sun. Terrain shadows and eclipses are omitted.', { plain: 'Sunlit when solar elevation > 0°', tex: String.raw`\text{Sunlit}\quad\text{if}\quad\alpha>0^\circ` }, ...SOLAR_SOURCES],
+  irradiance: ['Estimated horizontal irradiance', 'Sunlight is projected onto flat ground. The result is incoming energy per area.', { plain: 'I = 1,361 × max(0, sin elevation) / distance² W/m² · distance in AU', tex: String.raw`I=\frac{1361\,\max(0,\sin\alpha)}{d_{\mathrm{AU}}^2}\;\mathrm{W\,m^{-2}}` }, ['NASA Goddard solar irradiance', 'https://earth.gsfc.nasa.gov/climate/projects/solar-irradiance/science']],
+  regionalSlope: ['Regional mean slope', 'The atlas reads the selected region’s precomputed average from the lunar terrain data.', { plain: 'Mean slope = sum of sampled slope angles ÷ sample count', tex: String.raw`\bar\theta=\frac{1}{n}\sum_{i=1}^{n}\theta_i` }, LOLA],
+  localSlope: ['Local LOLA slope', 'The rover samples unexaggerated ground heights on opposite sides of its position.', { plain: 'Slope = atan(√(gradient east² + gradient north²)) · gradient = rise ÷ run', tex: String.raw`\theta=\arctan\!\sqrt{\left(\frac{\Delta h_E}{\Delta E}\right)^2+\left(\frac{\Delta h_N}{\Delta N}\right)^2}` }, LOLA],
+  gravity: ['Lunar gravity', 'The rover uses a constant downward acceleration. The value is a lunar surface reference.', { plain: 'g ≈ 1.62 m/s²', tex: String.raw`g\approx1.62\;\mathrm{m\,s^{-2}}` }, MOON_FACTS],
+  pressure: ['Pressure', 'The Moon has a tenuous exosphere. The simulator displays a qualitative reference.', '', MOON_FACTS],
+  distance: ['Mean Earth distance', 'The value is the approximate mean center-to-center distance. The instantaneous distance varies.', { plain: 'Mean distance ≈ 384,400 km', tex: String.raw`\bar d\approx384{,}400\;\mathrm{km}` }, ['JPL lunar distance reference', 'https://cneos.jpl.nasa.gov/glossary/LD.html']],
+  recession: ['Mean orbital recession', 'Lunar laser ranging estimates how fast the average Earth–Moon distance increases.', { plain: 'Average change ≈ 3.8 cm/year', tex: String.raw`\overline{\dot d}\approx3.8\;\mathrm{cm\,yr^{-1}}` }, ['NASA lunar laser ranging summary', 'https://eclipse.gsfc.nasa.gov/SEcat5/secular.html']],
+  relativity: ['Estimated lunar clock gain', 'A constant-rate estimate relative to a clock on the Earth geoid.', { plain: 'Gain (µs) ≈ simulated Earth days × 56.02', tex: String.raw`\Delta\tau\approx56.02\;\mathrm{\mu s}\,\frac{\Delta t_{\mathrm{sim}}}{86400\;\mathrm{s}}` }, ['NIST · Ashby and Patla, Table II', 'https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=957328']],
+  traverse: ['Distance traversed', 'Each simulated step adds the horizontal distance moved. Backtracking also adds distance.', { plain: 'Distance = Σ √(Δx² + Δz²)', tex: String.raw`L=\sum_i\sqrt{(\Delta x_i)^2+(\Delta z_i)^2}` }, ROVER_SOURCE],
+  velocity: ['Rover playback speed', 'The display multiplies horizontal velocity in m/s by the clock rate r and converts it to km/h.', { plain: 'Playback speed = √(vₓ² + v𝓏²) × 3.6 × rate · km/h', tex: String.raw`v_{\mathrm{playback}}=3.6r\sqrt{v_x^2+v_z^2}\;\mathrm{km/h}` }, ROVER_SOURCE],
+  earthVelocity: ['Rover speed', 'The speed uses the rover’s horizontal velocity on the Earth analog tile.', { plain: 'Speed = 3.6 × horizontal velocity in m/s', tex: String.raw`v=3.6\sqrt{v_x^2+v_z^2}\;\mathrm{km/h}` }, ROVER_SOURCE],
+  earthGround: ['Earth ground elevation', 'The app interpolates the NASA SRTM terrain triangle beneath the rover.', { plain: 'Height = interpolation of the three triangle heights', tex: String.raw`h=w_1h_1+w_2h_2+w_3h_3` }, ['NASA SRTMGL1', 'https://doi.org/10.5067/MEaSUREs/SRTM/SRTMGL1.003']],
+  ground: ['Ground elevation', 'The app interpolates the LOLA terrain triangle beneath the rover. Each height is weighted by the rover’s position within the triangle. Negative values are below the lunar reference radius.', { plain: 'Height = interpolation of the three triangle heights', tex: String.raw`h=w_1h_1+w_2h_2+w_3h_3` }, LOLA],
+};
+
+const KATEX_DIST = 'https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/';
+let mathRenderer;
+
+function loadMathRenderer() {
+  mathRenderer ??= Promise.all([
+    new Promise((resolve, reject) => {
+      const stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = `${KATEX_DIST}katex.min.css`;
+      stylesheet.integrity = 'sha384-WwGtaC6ywCHxA5cstpj/3+xIZvTez8dq2IcBQaXRkenHZ7FVVq1ZROtURwfbtTlG';
+      stylesheet.crossOrigin = 'anonymous';
+      stylesheet.addEventListener('load', resolve, { once: true });
+      stylesheet.addEventListener('error', reject, { once: true });
+      document.head.append(stylesheet);
+    }),
+    import(`${KATEX_DIST}katex.mjs`),
+  ]).then(([, module]) => module.default).catch(() => null);
+  return mathRenderer;
+}
+
+function showFormula(element, formula) {
+  element.textContent = formula?.plain ?? '';
+  element.hidden = !formula;
+  element.dataset.tex = formula?.tex ?? '';
+  if (!formula) return;
+  loadMathRenderer().then(katex => {
+    if (!katex || element.dataset.tex !== formula.tex) return;
+    try {
+      katex.render(formula.tex, element, { displayMode: true, trust: false });
+    } catch {
+      element.textContent = formula.plain;
+    }
+  });
+}
+
+function methodButton(id, text, key = '') {
+  const field = key ? ` data-lunar="${key}"` : '';
+  return `<button type="button" class="telemetry-method" data-method="${id}" aria-haspopup="dialog"${field}>${text}</button>`;
+}
+
+export function mountLunarSimulation(panel, {
+  onStart, onPause, onReset, onSpeedChange, onEpochChange, coordinateDigits = 5, driving = false,
+} = {}) {
   panel.innerHTML = `
     <summary>Lunar telemetry</summary>
     <div class="lunar-body">
-      <label>Simulation start (UTC)<input data-lunar-start type="datetime-local" min="1900-01-01T00:00" max="2099-12-31T23:59" required></label>
-      <label>Time acceleration <output data-lunar="speed"></output>
-        <input data-lunar-speed type="range" min="0" max="400" value="0" aria-label="Time acceleration"
+      <div class="lunar-epoch">
+        <span id="lunar-epoch-label">Simulation start (UTC)</span>
+        <button type="button" data-lunar-epoch aria-haspopup="dialog" aria-labelledby="lunar-epoch-label lunar-epoch-value">
+          <span id="lunar-epoch-value"></span>
+        </button>
+        <dialog class="lunar-date-dialog" aria-labelledby="lunar-date-title">
+          <form>
+            <h2 id="lunar-date-title">Simulation start (UTC)</h2>
+            <label>Date <input type="date" min="1900-01-01" max="2099-12-31" required></label>
+            <label>Choose a time
+              <select data-lunar-time-choice><option value="">Select UTC time</option></select>
+            </label>
+            <label>Or enter an exact time <input type="time" required></label>
+            <div class="lunar-actions">
+              <button type="submit">Set UTC</button>
+              <button type="button" data-lunar-cancel>Cancel</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+      <label for="lunar-speed">Time acceleration</label>
+      <div class="lunar-speed">
+        ${methodButton('speed', '', 'speed')}
+        ${driving ? '<span>Drive range 1–16×</span>' : ''}
+        <input id="lunar-speed" data-lunar-speed type="range" min="0" max="${driving ? DRIVE_SLIDER_MAX : 400}" value="0" aria-label="Time acceleration"
                list="lunar-speed-ticks">
-      </label>
+      </div>
       <datalist id="lunar-speed-ticks">
-        <option value="0"></option><option value="100"></option><option value="200"></option>
+        <option value="0"></option><option value="68"></option><option value="100"></option><option value="200"></option>
         <option value="300"></option><option value="400"></option>
       </datalist>
       <div class="lunar-actions">
@@ -144,29 +251,73 @@ export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordin
         <button type="button" data-lunar-reset>Reset</button>
       </div>
       <dl>
-        <dt>Simulation UTC</dt><dd data-lunar="utc"></dd>
-        <dt>Latitude, longitude</dt><dd data-lunar="position"></dd>
-        <dt>Surface temp. (est.)</dt><dd data-lunar="temperature"></dd>
-        <dt>Solar elevation (est.)</dt><dd data-lunar="elevation"></dd>
-        <dt>Sunlight</dt><dd data-lunar="sunlight"></dd>
-        <dt>Irradiance (est.)</dt><dd data-lunar="irradiance"></dd>
-        <dt data-lunar="slopeLabel">Regional mean slope</dt><dd data-lunar="slope"></dd>
-        <dt>Lunar gravity</dt><dd>≈1.62 m/s²</dd>
+        <dt>Simulation UTC</dt><dd>${methodButton('utc', '', 'utc')}</dd>
+        <dt>Latitude, longitude</dt><dd>${methodButton('coordinates', '', 'position')}</dd>
+        <dt>Surface temp. (est.)</dt><dd>${methodButton('temperature', '', 'temperature')}</dd>
+        <dt>Solar elevation (est.)</dt><dd>${methodButton('solar', '', 'elevation')}</dd>
+        <dt>Sunlight</dt><dd>${methodButton('sunlight', '', 'sunlight')}</dd>
+        <dt>Irradiance (est.)</dt><dd>${methodButton('irradiance', '', 'irradiance')}</dd>
+        <dt data-lunar="slopeLabel">Regional mean slope</dt><dd>${methodButton(driving ? 'localSlope' : 'regionalSlope', '', 'slope')}</dd>
+        <dt>Lunar gravity</dt><dd>${methodButton('gravity', '≈1.62 m/s²')}</dd>
       </dl>
       <p>Geometric illumination on a horizontal surface. Terrain shadows and eclipses are omitted.</p>
       <details>
         <summary>Advanced Physics</summary>
         <dl>
-          <dt>Pressure</dt><dd>Near vacuum</dd>
-          <dt>Mean Earth distance</dt><dd>≈384,400 km</dd>
-          <dt>Mean orbital recession</dt><dd>≈3.8 cm/yr</dd>
-          <dt>Lunar clock gain</dt><dd data-lunar="offset"></dd>
+          <dt>Pressure</dt><dd>${methodButton('pressure', 'Near vacuum')}</dd>
+          <dt>Mean Earth distance</dt><dd>${methodButton('distance', '≈384,400 km')}</dd>
+          <dt>Mean orbital recession</dt><dd>${methodButton('recession', '≈3.8 cm/yr')}</dd>
+          <dt>Lunar clock gain</dt><dd>${methodButton('relativity', '', 'offset')}</dd>
         </dl>
         <p>Estimated relative to an Earth clock from simulation start, at 56.02 µs per Earth day.</p>
       </details>
+      <dialog class="lunar-method-dialog" aria-labelledby="lunar-method-title">
+        <h2 id="lunar-method-title"></h2>
+        <p class="lunar-method-value"></p>
+        <p class="lunar-method-explanation"></p>
+        <p class="lunar-method-formula"></p>
+        <ul class="lunar-method-sources" aria-label="Sources"></ul>
+        <form method="dialog" class="lunar-actions"><button type="submit" autofocus>Close</button></form>
+      </dialog>
     </div>`;
 
-  const input = panel.querySelector('[data-lunar-start]');
+  const methodDialog = panel.querySelector('.lunar-method-dialog');
+  document.body.append(methodDialog);
+  document.addEventListener('click', event => {
+    const trigger = event.target.closest('button[data-method]');
+    if (!trigger || !Object.hasOwn(METHODS, trigger.dataset.method)) return;
+    const [title, explanation, formula, ...sources] = METHODS[trigger.dataset.method];
+    const value = trigger.querySelector('strong') ?? trigger;
+    methodDialog.querySelector('h2').textContent = title;
+    methodDialog.querySelector('.lunar-method-value').textContent = value.textContent;
+    methodDialog.querySelector('.lunar-method-explanation').textContent = explanation;
+    showFormula(methodDialog.querySelector('.lunar-method-formula'), formula);
+    const sourceList = methodDialog.querySelector('ul');
+    sourceList.replaceChildren(...sources.map(([name, url]) => {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = name;
+      item.append(link);
+      return item;
+    }));
+    sourceList.hidden = !sources.length;
+    methodDialog.showModal();
+  });
+
+  const dateButton = panel.querySelector('[data-lunar-epoch]');
+  const dialog = panel.querySelector('.lunar-date-dialog');
+  const date = dialog.querySelector('input[type="date"]');
+  const exact = dialog.querySelector('input[type="time"]');
+  const choices = dialog.querySelector('select');
+  for (let hour = 0; hour < 24; hour++) {
+    for (const minute of ['00', '30']) {
+      const time = `${String(hour).padStart(2, '0')}:${minute}`;
+      choices.add(new Option(time, time));
+    }
+  }
   const slider = panel.querySelector('[data-lunar-speed]');
   const toggle = panel.querySelector('[data-lunar-toggle]');
   const fields = Object.fromEntries([...panel.querySelectorAll('[data-lunar]')]
@@ -177,14 +328,18 @@ export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordin
     && Number.isFinite(elapsed) && elapsed >= 0 && Math.abs(epoch + elapsed) < 8e15
     && Number.isInteger(sliderValue) && sliderValue >= 0 && sliderValue <= 400
     && Number.isFinite(sentAt) && sentAt >= 0;
-  const clock = createLunarClock(validHandoff ? epoch : Math.floor(Date.now() / 60000) * 60000);
+  const clock = createLunarClock(validHandoff ? epoch : Math.floor(Date.now() / 60000) * 60000, undefined, driving);
   if (validHandoff) {
-    slider.value = sliderValue;
-    clock.setSpeed(speedAt(sliderValue));
-    clock.restore(elapsed + (sentAt ? Math.max(0, Date.now() - sentAt) * speedAt(sliderValue) : 0), !!sentAt);
+    slider.value = Math.min(sliderValue, Number(slider.max));
+    clock.setSpeed(speedAt(Number(slider.value)));
+    const transit = sentAt ? Math.max(0, Date.now() - sentAt) * speedAt(sliderValue) : 0;
+    clock.restore(elapsed + transit, !!sentAt && !driving);
     history.replaceState(history.state, '', location.pathname + location.search);
   }
-  input.value = utcInputValue(clock.read().epoch);
+  function showEpoch() {
+    panel.querySelector('#lunar-epoch-value').textContent = utcInputValue(clock.read().epoch).replace('T', ' ');
+  }
+  showEpoch();
 
   let locationData = {};
   function render() {
@@ -208,6 +363,7 @@ export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordin
     }
     toggle.textContent = running ? 'Pause' : 'Start';
     slider.setAttribute('aria-valuetext', `${formatSpeed(speed)} times`);
+    return environment;
   }
 
   function pause() {
@@ -216,19 +372,35 @@ export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordin
     render();
   }
 
-  input.addEventListener('change', () => {
-    const nextEpoch = Date.parse(`${input.value}Z`);
-    if (!input.checkValidity() || !Number.isFinite(nextEpoch)) {
-      input.value = utcInputValue(clock.read().epoch);
-      return;
-    }
-    const running = clock.read().running;
+  dateButton.addEventListener('click', () => {
+    [date.value, exact.value] = utcInputValue(clock.read().epoch).split('T');
+    choices.value = '';
+    dialog.showModal();
+  });
+  panel.querySelector('[data-lunar-cancel]').addEventListener('click', () => dialog.close());
+
+  function chooseEpoch(time) {
+    if (!date.reportValidity()) return;
+    const nextEpoch = Date.parse(`${date.value}T${time}Z`);
+    if (!Number.isFinite(nextEpoch)) return;
+    const running = clock.running;
     clock.reset(nextEpoch);
     if (running) clock.start();
+    dialog.close();
+    showEpoch();
+    onEpochChange?.();
     render();
+  }
+  choices.addEventListener('change', () => {
+    if (choices.value) chooseEpoch(choices.value);
+  });
+  dialog.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault();
+    chooseEpoch(exact.value);
   });
   slider.addEventListener('input', () => {
     clock.setSpeed(speedAt(Number(slider.value)));
+    onSpeedChange?.();
     render();
   });
   function reset({ resume = false } = {}) {
@@ -259,7 +431,7 @@ export function mountLunarSimulation(panel, { onStart, onPause, onReset, coordin
     reset,
     updateRoverPosition(lat, lon, slope, slopeLabel) {
       locationData = { lat, lon, slope, slopeLabel };
-      render();
+      return render();
     },
     linkTo(href) {
       const url = new URL(href, location.href);
