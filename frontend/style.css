@@ -142,6 +142,7 @@ button.primary:disabled { opacity: .4; cursor: default; }
 /* Sunlight row in the region popup */
 .sun { margin: 4px 0 14px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 200, 80, .07); border: 1px solid rgba(255, 200, 80, .18); }
 .sun-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.sun-icon { font-style: normal; font-size: 10px; vertical-align: 1px; }
 .sun-head b { font-size: 18px; color: #ffd27a; }
 .sun-bar { position: relative; height: 6px; margin: 8px 0 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); }
 .sun-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: #ffd27a; }

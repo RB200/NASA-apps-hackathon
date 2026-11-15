@@ -120,7 +120,7 @@ function showSunlight(r) {
   el.hidden = !s;
   if (!s) return;
   const pct = v => `${Math.round(v * 100)}%`;
-  el.innerHTML = `<div class="sun-head"><span>☀️ Sunlight</span><b>${pct(s.mean)}</b><span class="muted">of the time, on average</span></div>
+  el.innerHTML = `<div class="sun-head"><span><i class="sun-icon" aria-hidden="true">☀️</i> Sunlight</span><b>${pct(s.mean)}</b><span class="muted">of the time, on average</span></div>
     <div class="sun-bar" aria-hidden="true"><i style="width:${s.mean * 100}%"></i><em style="left:${s.best * 100}%"></em></div>
     <p class="muted sun-note">Sunniest spot ${pct(s.best)} · ${s.dark < 0.005 ? 'almost no' : pct(s.dark) + ' of the area in'} near-permanent shadow</p>`;
   el.title = 'Share of time any part of the Sun is above the local horizon, including terrain shadows. NASA LRO LOLA average solar illumination, 120 m/pixel, averaged over 18.6 years (Mazarico et al. 2011).';
