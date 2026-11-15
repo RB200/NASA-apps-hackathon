@@ -150,3 +150,13 @@ kbd { margin-left: 5px; padding: 2px 4px; border: 1px solid rgba(220,228,225,.17
   .control-panel { top: 76px; bottom: 30px; transform: none; overflow: auto; }
   .intro { top: 23%; }
 }
+
+#drive-telemetry {
+  --text: var(--ink);
+  position: absolute; z-index: 4; top: 64px; right: 32px;
+  width: min(316px, calc(100vw - 24px)); max-height: min(470px, calc(100dvh - 76px));
+}
+#drive-telemetry:not([open]) { width: auto; }
+@media (max-width: 820px) {
+  #drive-telemetry { top: 136px; right: 12px; max-height: max(34px, calc(100dvh - 148px)); }
+}

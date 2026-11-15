@@ -1,4 +1,5 @@
 import { loadRover, RoverDynamics } from './rover.js?v=ground-contact';
+import { mountLunarSimulation } from '../../frontend/lunar-simulation.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -68,6 +69,19 @@ let lastPointer = null;
 let walkHudElapsed = 0;
 const walkKeys = new Set();
 const walkClock = new THREE.Clock();
+const driveTelemetry = $('drive-telemetry');
+driveTelemetry.open = matchMedia('(min-width: 821px)').matches;
+const simulation = mountLunarSimulation(driveTelemetry, {
+  onStart: () => renderer.domElement.focus({ preventScroll: true }),
+  onPause() {
+    walkKeys.clear();
+    $('walk-pace').textContent = '0.0 km/h';
+  },
+  onReset: () => { if (walkMode) resetRover(); },
+});
+const atlasLink = document.querySelector('.back-link');
+const atlasPage = atlasLink.href;
+atlasLink.addEventListener('click', () => { atlasLink.href = simulation.linkTo(atlasPage); });
 
 const colorStops = [
   [0.00, new THREE.Color('#111c26')],
@@ -365,6 +379,40 @@ function updateWalkCamera(dt = 1 / 60, snap = false) {
   camera.lookAt(walkCameraTarget);
 }
 
+function updateDriveTelemetry() {
+  const { x, z } = rover.position;
+  const { descriptor, fine } = viewData;
+  const spacing = currentView.spacing;
+  // Invert prepare_lola_3d.py's south-polar stereographic pixel mapping.
+  const col = descriptor.firstColumn + (descriptor.width - 1) * descriptor.stridePixels / 2;
+  const row = descriptor.firstRow + (descriptor.height - 1) * descriptor.stridePixels / 2;
+  const east = (col + 1 - metadata.sampleProjectionOffset) * metadata.pixelSizeM + x;
+  const north = (row + 1 - metadata.lineProjectionOffset) * metadata.pixelSizeM - z;
+  const lat = -90 + THREE.MathUtils.radToDeg(2 * Math.atan(Math.hypot(east, north) / (2 * metadata.referenceRadiusM)));
+  const lon = THREE.MathUtils.radToDeg(Math.atan2(east, north));
+
+  // Use one unexaggerated LOLA grid for the whole slope stencil.
+  const fineGrid = fine?.descriptor;
+  const fineX = x - (fineGrid?.offsetX ?? 0);
+  const fineZ = z - (fineGrid?.offsetZ ?? 0);
+  const fineSpacing = metadata.pixelSizeM * (fineGrid?.stridePixels ?? 1);
+  const useFine = fineGrid && Math.abs(fineX) + fineSpacing <= (fineGrid.width - 1) * fineSpacing / 2
+    && Math.abs(fineZ) + fineSpacing <= (fineGrid.height - 1) * fineSpacing / 2;
+  const step = useFine ? fineSpacing : spacing;
+  const grid = useFine ? fine : viewData;
+  const px = useFine ? fineX : x;
+  const pz = useFine ? fineZ : z;
+  let slope;
+  if (Math.abs(px) + step <= (grid.descriptor.width - 1) * step / 2
+      && Math.abs(pz) + step <= (grid.descriptor.height - 1) * step / 2) {
+    const elevation = (sx, sz) => sampleTerrain(grid, step, sx, sz).elevation;
+    const riseX = elevation(px + step, pz) - elevation(px - step, pz);
+    const riseZ = elevation(px, pz + step) - elevation(px, pz - step);
+    slope = THREE.MathUtils.radToDeg(Math.atan(Math.hypot(riseX, riseZ) / (2 * step)));
+  }
+  simulation.updateRoverPosition(lat, lon, slope, `Local LOLA slope (${step} m grid)`);
+}
+
 function updateWalker(dt) {
   const axis = (a, b, c, d) => Number(walkKeys.has(a) || walkKeys.has(b)) -
     Number(walkKeys.has(c) || walkKeys.has(d));
@@ -380,6 +428,7 @@ function updateWalker(dt) {
     $('walk-distance').textContent = distance < 1000 ? `${distance.toFixed(0)} m` : `${(distance / 1000).toFixed(2)} km`;
     $('walk-pace').textContent = `${(speed * 3.6).toFixed(1)} km/h`;
     $('walk-ground').textContent = `${Math.round(terrainAt(rover.position.x, rover.position.z).elevation).toLocaleString()} m`;
+    updateDriveTelemetry();
     walkHudElapsed = 0;
   }
 }
@@ -397,6 +446,7 @@ function resetRover() {
   camera.near = 0.25;
   camera.updateProjectionMatrix();
   updateWalkCamera(0, true);
+  updateDriveTelemetry();
 }
 
 function enterWalkMode() {
@@ -407,6 +457,8 @@ function enterWalkMode() {
   controls.enabled = false;
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
+  driveTelemetry.hidden = false;
+  simulation.clock.start();
   renderer.domElement.focus({ preventScroll: true });
   resetRover();
 }
@@ -423,6 +475,8 @@ function exitWalkMode() {
   if (siteMarker) siteMarker.visible = true;
   document.querySelector('.app-shell').classList.remove('walk-mode');
   $('walk-hud').hidden = true;
+  driveTelemetry.hidden = true;
+  simulation.pause();
   $('walk-crosshair').hidden = true;
   if (currentView) frameView(currentView);
 }
@@ -612,7 +666,8 @@ addEventListener('keydown', event => {
   if (!walkMode) return;
   const key = event.key.toLowerCase();
   if (key === 'escape') { exitWalkMode(); return; }
-  if (key === 'r' && !event.repeat) resetRover();
+  if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, summary')) return;
+  if (key === 'r' && !event.repeat) simulation.reset({ resume: simulation.clock.read().running });
   if (movementKeys.has(key)) { walkKeys.add(key); event.preventDefault(); }
 });
 addEventListener('keyup', event => walkKeys.delete(event.key.toLowerCase()));
@@ -636,7 +691,9 @@ addEventListener('resize', () => {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(walkClock.getDelta(), 0.05);
   if (walkMode) {
-    updateWalker(dt);
+    // Drive controls keep their existing real-time pace at every time warp.
+    if (simulation.clock.running) updateWalker(dt);
+    else updateWalkCamera(dt);
     keyLight.target.position.copy(rover.position);
     keyLight.position.copy(rover.position).add(sunOffset);
   } else {
