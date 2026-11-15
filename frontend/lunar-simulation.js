@@ -40,6 +40,11 @@ export function createLunarClock(start, now = () => performance.now(), frameDriv
       elapsed += simulatedMs;
       return simulatedMs;
     },
+    skip(simulatedMs) {
+      const time = now();
+      elapsed = elapsedAt(time) + simulatedMs;
+      if (anchor !== null) anchor = time;
+    },
     pause() {
       elapsed = elapsedAt(now());
       anchor = null;
@@ -163,7 +168,7 @@ export function lunarEnvironment(utc, lat, lon) {
     flux += weight * solarGeometry(utc - hours * 3_600_000, lat, lon).irradiance;
   }
   const temperature = (90 ** 4 + 0.88 * flux / (0.95 * 5.670374419e-8)) ** 0.25 - 273.15;
-  return { ...geometry, temperature, sunlight: elevation > 0 ? 'Sunlit' : 'Geometrically below horizon' };
+  return { ...geometry, temperature, atDarkBaseline: flux === 0, sunlight: elevation > 0 ? 'Sunlit' : 'Geometrically below horizon' };
 }
 
 const utcInputValue = utc => new Date(utc).toISOString().slice(0, 16);

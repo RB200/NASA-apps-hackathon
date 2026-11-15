@@ -1,4 +1,4 @@
-import { environmentClock, environmentProfile } from './traverse-environment.mjs';
+import { environmentClock, environmentProfile } from './traverse-environment.mjs?v=environment-clock-2';
 import { INTERVAL, Traverse, routeStats, profileDifference } from './traverse.mjs?v=environment-1';
 
 const colors = { earth: '#75e2af', moon: '#c1b2ff' };
@@ -47,7 +47,8 @@ function graph(svg, points, metric = null) {
 
 function drawEnvironment(container, test, key) {
   const metric = environmentMetrics[key];
-  const points = environmentProfile(test).map(point => {
+  const profile = environmentProfile(test);
+  const points = profile.map(point => {
     const values = { distance: point.minute };
     for (const world of metric.series) values[world] = point[world][key];
     return values;
@@ -56,10 +57,17 @@ function drawEnvironment(container, test, key) {
   const note = container.querySelector('.traverse-environment-note');
   note.hidden = false;
   const start = new Date(test.environmentClock.start).toISOString().slice(0, 19).replace('T', ' ');
-  const detail = key === 'temperature'
-    ? 'Lunar estimate at the site center. Earth temperature data are unavailable.'
-    : 'Site centers at the same simulated UTC. Sunlight excludes clouds and terrain shadows.';
-  putText(note, `${detail} Start: ${start} UTC. Samples every simulated minute plus the latest point.`);
+  const latest = profile.at(-1).moon;
+  const clock = test.environmentClock;
+  const end = new Date(clock.start + clock.seconds * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  let detail = 'Site centers at the same simulated UTC. Sunlight excludes clouds and terrain shadows.';
+  if (key === 'temperature') {
+    const temperature = `Latest: ${fmt(latest.temperature)} °C. Sun elevation: ${latest.elevation.toFixed(2)}°.`;
+    const darkness = latest.atDarkBaseline
+      ? ' The model holds at its dark baseline when it receives no current or recent sunlight.' : '';
+    detail = `${temperature}${darkness} Earth temperature data are unavailable.`;
+  }
+  putText(note, `${detail} ${start} to ${end} UTC.`);
   container.querySelector('.traverse-key span').hidden = key === 'temperature';
 }
 
@@ -173,12 +181,13 @@ function drawMapLabels(ctx, route, finishColor, metresPerPixel) {
   ctx.fillStyle = '#fff'; ctx.fillText('↑ N', size - 45, 23);
 }
 
-export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock }) {
+export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock, advanceEnvironmentDay }) {
   const panel = document.getElementById('live-traverse');
   const status = panel.querySelector('p');
   const liveGraph = panel.querySelector('svg');
   const liveChart = document.getElementById('traverse-live-chart');
   const liveMetric = document.getElementById('traverse-live-metric');
+  const advanceDay = document.getElementById('traverse-advance-day');
   const reportMetric = document.getElementById('traverse-report-metric');
   const reportEnvironment = document.querySelector('.traverse-environment');
   liveMetric.add(new Option('Terrain elevation by distance', ''));
@@ -217,6 +226,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock })
       test.incomplete ? `Incomplete · tile edge at ${metres(test.pairedDistance)} · driven ${metres(test.distance)}` :
         `Recording · ${metres(test.distance)} · ${INTERVAL} m stations`));
     if (!panel.open || !test.tiles) return;
+    advanceDay.hidden = !liveMetric.value;
     if (liveMetric.value) {
       if (force || drawnClock !== test.environmentClock) {
         drawEnvironment(liveChart, test, liveMetric.value);
@@ -300,6 +310,19 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock })
   let sequence = 0;
   finish.addEventListener('click', () => { complete(true); refocus(); });
   reopen.addEventListener('click', showReport);
+  function captureEnvironmentClock() {
+    if (!current || current.reason) return;
+    const test = current.test;
+    const previous = test.environmentClock;
+    const next = environmentClock(previous, readClock());
+    if (next.start !== previous.start || next.seconds !== previous.seconds) test.environmentClock = next;
+  }
+  advanceDay.addEventListener('click', () => {
+    advanceEnvironmentDay();
+    captureEnvironmentClock();
+    update(true);
+    refocus();
+  });
   liveMetric.addEventListener('change', () => update(true));
   reportMetric.addEventListener('change', () => drawEnvironment(reportEnvironment, shown, reportMetric.value));
   zoom.addEventListener('change', refreshMaps);
@@ -348,12 +371,7 @@ export function mountTraverse({ refocus, earthSites, loadEarthSite, readClock })
     },
     record(x, z) { if (current && !current.reason) current.test.record(x, z); },
     tick() {
-      if (current && !current.reason) {
-        const test = current.test;
-        const previous = test.environmentClock;
-        const next = environmentClock(previous, readClock());
-        if (next.start !== previous.start || next.seconds !== previous.seconds) test.environmentClock = next;
-      }
+      captureEnvironmentClock();
       update();
     },
     leave() {

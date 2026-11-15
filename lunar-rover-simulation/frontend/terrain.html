@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#080d13" />
   <title>LOLA 5 m · Lunar Terrain Explorer</title>
   <link rel="stylesheet" href="terrain.css" />
+  <link rel="stylesheet" href="earth.css" />
+  <link rel="stylesheet" href="traverse.css?v=environment-1" />
   <link rel="stylesheet" href="../../frontend/lunar-telemetry.css" />
   <script type="importmap">
     {
@@ -22,20 +24,15 @@
     <div class="vignette" aria-hidden="true"></div>
 
     <header class="topbar">
-      <a class="back-link" href="../../frontend/index.html"><span aria-hidden="true">←</span> Field Atlas</a>
+      <a class="back-link" href="../../frontend/index.html"><span aria-hidden="true">←</span> Back to matches</a>
       <div class="top-mark"><span class="live-dot"></span> LOLA POLAR DEM <span class="top-divider">/</span> 5 M SOURCE</div>
     </header>
 
-    <section class="intro">
-      <div class="eyebrow">LUNAR SOUTH POLE · TERRAIN STUDY</div>
-      <h1>Read the<br><em>shape of the Moon.</em></h1>
-      <p>Explore LOLA elevation as a three-dimensional surface. Orbit, tilt, and compare the rugged polar terrain.</p>
-    </section>
+    <!-- "Where are we": flag + place, filled by earth.js -->
+    <div class="where-badge" id="where-badge" hidden></div>
 
     <aside class="control-panel" aria-label="Terrain controls">
       <div class="panel-kicker"><span>01</span> SURFACE VIEW</div>
-      <label class="slider-label" for="region-select">Lunar region</label>
-      <select id="region-select" aria-label="Choose lunar region"><option value="">Choose a region</option></select>
       <div class="view-switch" role="group" aria-label="Choose terrain scale">
         <button class="view-button" data-view="detail" aria-pressed="false">De Gerlache 5 m</button>
         <button class="view-button" data-view="crater" aria-pressed="false">Crater view</button>
@@ -52,19 +49,21 @@
       </div>
 
       <div class="metric-grid">
-        <div class="metric"><span class="metric-label">LOW</span><strong id="min-height">—</strong><small>relative elevation</small></div>
-        <div class="metric"><span class="metric-label">HIGH</span><strong id="max-height">—</strong><small>relative elevation</small></div>
-        <div class="metric metric-wide"><span class="metric-label">RELIEF IN VIEW</span><strong id="relief">—</strong><small>high point minus low point</small></div>
+        <div class="metric"><span class="metric-label">LOWEST</span><strong id="min-height">—</strong><small class="height-ref">relative elevation</small></div>
+        <div class="metric"><span class="metric-label">HIGHEST</span><strong id="max-height">—</strong><small class="height-ref">relative elevation</small></div>
+        <div class="metric metric-wide"><span class="metric-label">HEIGHT RANGE</span><strong id="relief">—</strong><small>highest minus lowest point in this view</small></div>
       </div>
 
-      <div class="control-rule"></div>
-      <label class="slider-label" for="exaggeration"><span>Vertical exaggeration</span><output id="exag-value">2.0×</output></label>
-      <input id="exaggeration" type="range" min="1" max="5" step="0.25" value="2" />
-      <div class="slider-ends"><span>True scale</span><span>5×</span></div>
-
-      <button id="reset-view" class="reset-button"><span aria-hidden="true">⟳</span> Reset view</button>
       <button id="walk-button" class="walk-button"><span class="walk-button-mark" aria-hidden="true">↗</span> Drive inside the crater</button>
       <p class="walk-caption">Lunar rover · spawns inside the crater</p>
+
+      <details class="view-options">
+        <summary>View options</summary>
+        <label class="slider-label" for="exaggeration"><span>Exaggerate heights</span><output id="exag-value">2.0×</output></label>
+        <input id="exaggeration" type="range" min="1" max="5" step="0.25" value="2" />
+        <div class="slider-ends"><span>True scale</span><span>5×</span></div>
+        <button id="reset-view" class="reset-button"><span aria-hidden="true">⟳</span> Reset view</button>
+      </details>
     </aside>
 
     <div class="view-note" id="view-note">NATIVE 5 M PIXELS <span>·</span> 2.56 × 2.56 KM WINDOW</div>
@@ -85,15 +84,81 @@
         <button class="walk-exit" id="walk-exit" type="button">Exit drive <kbd>Esc</kbd></button>
       </div>
       <div class="walk-readouts">
-        <div><span>TRAVERSED</span><strong id="walk-distance">0 m</strong></div>
-        <div><span>SPEED</span><strong id="walk-pace">0.0 km/h</strong></div>
-        <div><span>GROUND</span><strong id="walk-ground">— m</strong></div>
+        <div><button type="button" class="telemetry-method" data-method="traverse" aria-haspopup="dialog"><span>TRAVERSED</span><strong id="walk-distance">0 m</strong></button></div>
+        <div><button type="button" class="telemetry-method" data-method="velocity" aria-haspopup="dialog"><span>PLAYBACK SPEED</span><strong id="walk-pace">0.0 km/h</strong></button></div>
+        <div><button type="button" class="telemetry-method" data-method="ground" aria-haspopup="dialog"><span>GROUND</span><strong id="walk-ground">— m</strong></button></div>
       </div>
-      <div class="walk-instructions"><b>W / S</b> drive / reverse <i>·</i> <b>A / D</b> steer <i>·</i> <b>SPACE</b> brake <i>·</i> <b>R</b> reset <i>·</i> drag to orbit</div>
+      <div class="walk-instructions"><b>W / S</b> drive / reverse <i>·</i> <b>A / D</b> steer <i>·</i> <b>SPACE</b> brake <i>·</i> <b>R</b> reset <i>·</i> drag to orbit <i>·</i> scroll to zoom</div>
     </section>
     <details id="drive-telemetry" class="lunar-telemetry" hidden></details>
+    <details id="live-traverse" hidden>
+      <summary>Live Terrain Comparison <small id="traverse-ready" hidden>· Report ready</small></summary>
+      <div class="traverse-live-content">
+        <p></p>
+        <div id="traverse-live-chart" hidden>
+          <label>Live graph <select id="traverse-live-metric"></select></label>
+          <svg class="traverse-chart" role="img" aria-label="Live Earth and Moon elevation relative to each route start, plotted against distance"></svg>
+          <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+          <p class="traverse-environment-note" hidden></p>
+          <button type="button" id="traverse-advance-day" hidden>Advance 24 simulated hours</button>
+        </div>
+        <div class="traverse-actions">
+          <button type="button" id="traverse-finish" disabled>Finish test</button>
+          <button type="button" id="traverse-last" hidden>View last report</button>
+        </div>
+      </div>
+    </details>
+
+    <dialog id="traverse-report" aria-labelledby="traverse-title">
+      <header>
+        <h2 id="traverse-title">Traverse Analysis Report</h2>
+        <form method="dialog"><button autofocus>Close</button></form>
+      </header>
+      <p class="traverse-result-status"></p>
+      <div class="traverse-earth-picker">
+        <label>Earth terrain <select id="traverse-earth-site"></select></label>
+        <p id="traverse-earth-status" role="status"></p>
+      </div>
+      <div class="traverse-map-controls">
+        <span>Shared scale and local north · S = start · F = end of paired coverage</span>
+        <label><input type="checkbox" id="traverse-overlay"> Overlay maps</label>
+        <label><input type="checkbox" id="traverse-zoom"> Zoom to route</label>
+      </div>
+      <div class="traverse-maps">
+        <figure>
+          <figcaption><strong>EARTH ANALOG</strong><span data-tile="earth"></span></figcaption>
+          <canvas width="360" height="360" data-world="earth" role="img" aria-label="Earth elevation map with the paired section of the route and start and finish markers"></canvas>
+        </figure>
+        <figure>
+          <figcaption><strong>LUNAR REGION</strong><span data-tile="moon"></span></figcaption>
+          <canvas width="360" height="360" data-world="moon" role="img" aria-label="Lunar elevation map with the paired section of the route and start and finish markers"></canvas>
+        </figure>
+      </div>
+      <figure class="traverse-overlay-map" hidden>
+        <figcaption>Routes aligned at the start · Earth solid, Moon dashed</figcaption>
+        <canvas width="360" height="360" role="img" aria-label="Earth and Moon terrain layers with both routes aligned at the start"></canvas>
+      </figure>
+      <h3>Route elevation profile</h3>
+      <svg class="traverse-chart" role="img" aria-label="Completed Earth and Moon elevation profiles"></svg>
+      <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+      <table>
+        <thead><tr><th scope="col">Route measurement</th><th scope="col">Earth</th><th scope="col">Moon</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p>Elevations come from the original DEMs at 30 m along-route intervals, plus the final point if between intervals. Slopes are angles between samples; the average is weighted by segment length. The different DEM grid sizes limit the detail each profile can show.</p>
+      <p>These measurements apply to this traverse and are separate from the atlas’s 20 km regional similarity measurements.</p>
+      <section class="traverse-environment">
+        <h3>Environment over time</h3>
+        <label>Environment graph <select id="traverse-report-metric"></select></label>
+        <svg class="traverse-chart" role="img"></svg>
+        <div class="traverse-key"><span>Earth · solid</span><span>Moon · dashed</span></div>
+        <p class="traverse-environment-note"></p>
+      </section>
+      <h3>What the profiles show</h3>
+      <p class="traverse-interpretation"></p>
+    </dialog>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=rover-focus"></script>
+  <script type="module" src="terrain.js?v=environment-clock-2"></script>
 </body>
 </html>

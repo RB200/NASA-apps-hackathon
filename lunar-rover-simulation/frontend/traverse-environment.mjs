@@ -1,4 +1,4 @@
-import { earthSolarGeometry, lunarEnvironment } from '../../frontend/lunar-simulation.js';
+import { earthSolarGeometry, lunarEnvironment } from '../../frontend/lunar-simulation.js?v=environment-clock-2';
 
 const MINUTE_MS = 60_000;
 
