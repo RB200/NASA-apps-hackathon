@@ -190,7 +190,8 @@ function rankMatches(result) {
     match.match = (result.scoreWeights.terrain * match.terrainScore +
       reachability * (match.reachabilityScore ?? 0) + shadows * (match.shadows?.score ?? 0)) / 100;
   }
-  result.matches.sort((a, b) => b.match - a.match);
+  const rankScore = match => match.match - (match.rankingPenalty ?? 0);
+  result.matches.sort((a, b) => rankScore(b) - rankScore(a));
 }
 
 async function search() {
@@ -372,7 +373,8 @@ function showDetail(m) {
   }
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '') +
-    (breakdown.length ? `<p class="muted">${breakdown.join(' · ')}</p>` : '');
+    (breakdown.length ? `<p class="muted">${breakdown.join(' · ')}</p>` : '') +
+    (m.rankingPenalty ? `<p class="muted">Atacama ranks ${m.rankingPenalty} points lower to give less studied analogs more visibility.</p>` : '');
 
   // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
   const sample = lastResult.source !== 'backend';

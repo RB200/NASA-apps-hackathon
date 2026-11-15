@@ -137,7 +137,11 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
     scores = np.clip(100 * (1 - dz / 2), 0, 100)          # per-feature 0..100
     total = combine(scores, rank_weights(constraints))
 
-    order = np.argsort(-total)
+    # Favor less studied analogs when their terrain scores are close.
+    penalties = np.array([
+        3 if "atacama" in (EARTH["name"][i] or "").casefold() else 0 for i in idx
+    ])
+    order = np.argsort(-(total - penalties), kind="stable")
     picked: list[int] = []
     for j in order:
         if len(picked) == n:
@@ -158,6 +162,7 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
             "lat": float(EARTH["lat"][i]),
             "lon": float(EARTH["lon"][i]),
             "match": round(float(total[j]), 1),
+            "rankingPenalty": int(penalties[j]),
             "bareFrac": float(EARTH["bare"][i]),
             "demSource": EARTH["demSource"][i],
             "features": {
