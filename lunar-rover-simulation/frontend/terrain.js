@@ -1,7 +1,4 @@
-import { loadRover, RoverDynamics, setGravity } from './rover.js?v=ground-contact';
-import { loadEarthMetadata, earthDescriptor, earthColorLut, applyWorld, earthReadout,
-  mountEarthControls, moonViewForRegion, MOON_GRAVITY, REGIONS, earthSiteFromUrl, atlasBackHref,
-  mountHideUi, loadMoonRegionStats } from './earth.js';
+import { loadRover, RoverDynamics } from './rover.js?v=ground-contact';
 import { mountLunarSimulation } from '../../frontend/lunar-simulation.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -30,11 +27,18 @@ controls.minDistance = 25;
 controls.maxDistance = 400000;
 controls.maxPolarAngle = Math.PI * 0.49;
 
-scene.add(new THREE.HemisphereLight('#e2e8ef', '#18212a', 1.35));
+const ambientLight = new THREE.HemisphereLight('#e2e8ef', '#18212a', 1.35);
+scene.add(ambientLight);
 const keyLight = new THREE.DirectionalLight('#fff0d7', 4.0);
 // Keep the sun direction fixed while its shadow camera covers the rover.
-const driveSunOffset = new THREE.Vector3();
 const sunOffset = new THREE.Vector3(-0.8, 0.60, 1.1).normalize().multiplyScalar(36);
+const sunDirection = sunOffset.clone().normalize();
+const sun = new THREE.Mesh(
+  new THREE.SphereGeometry(260, 24, 16),
+  new THREE.MeshBasicMaterial({ color: '#fff9e8', fog: false, toneMapped: false })
+);
+sun.visible = false;
+scene.add(sun);
 keyLight.position.copy(sunOffset);
 const shadowCamera = keyLight.shadow.camera;
 Object.assign(shadowCamera, { left: -20, right: 20, top: 20, bottom: -20, near: 0.5, far: 80 });
@@ -63,10 +67,6 @@ let walkMode = false;
 let rover = null;
 let dynamics = null;
 let cameraOrbit = 0;
-const DEFAULT_WALK_CAMERA_DISTANCE = 15;
-const MIN_WALK_CAMERA_DISTANCE = 8;
-const MAX_WALK_CAMERA_DISTANCE = 60;
-let walkCameraDistance = DEFAULT_WALK_CAMERA_DISTANCE;
 let enteringDrive = false;
 let walkYaw = 0;
 let walkPitch = 0.08;
@@ -80,9 +80,6 @@ const walkClock = new THREE.Clock();
 const driveTelemetry = $('drive-telemetry');
 driveTelemetry.open = matchMedia('(min-width: 821px)').matches;
 const simulation = mountLunarSimulation(driveTelemetry, {
-  driving: true,
-  onSpeedChange: () => { if (walkMode) showPlaybackSpeed(); },
-  onEpochChange: () => { if (walkMode) updateDriveTelemetry(); },
   onStart: () => renderer.domElement.focus({ preventScroll: true }),
   onPause() {
     walkKeys.clear();
@@ -90,19 +87,7 @@ const simulation = mountLunarSimulation(driveTelemetry, {
   },
   onReset: () => { if (walkMode) resetRover(); },
 });
-// Earth analog mode (earth.js). Earth tiles carry their own pixel size and height scale.
-const earthMetadata = await loadEarthMetadata(assetVersion);
-const pageParams = new URLSearchParams(location.search);
-let earthRegion = pageParams.get('region') ?? 'de-gerlache-rim-2';
-let earthSite = earthSiteFromUrl(pageParams); // a specific match chosen in the atlas ("Enter rover")
-const moonRegionStats = earthMetadata ? await loadMoonRegionStats() : null;
-let lastMoonView = 'detail';
-let refreshWorldToggle = null; // set once the Earth controls are mounted (end of file)
-const isEarth = () => viewMode === 'earth';
-const pixelSize = descriptor => descriptor.pixelSizeM ?? metadata.pixelSizeM;
-const heightScale = descriptor => descriptor.heightScaleM ?? metadata.heightScaleM;
 const atlasLink = document.querySelector('.back-link');
-if (earthMetadata) atlasLink.href = atlasBackHref(atlasLink.href, earthRegion); // reopen this region's matches
 const atlasPage = atlasLink.href;
 atlasLink.addEventListener('click', () => { atlasLink.href = simulation.linkTo(atlasPage); });
 
@@ -126,7 +111,7 @@ function elevationColor(t) {
 const colorLut = Array.from({ length: 256 }, (_, i) => elevationColor(i / 255));
 
 async function readGrid(descriptor) {
-  const response = await fetch(descriptor.url ?? `./assets/${descriptor.file}?v=${assetVersion}`);
+  const response = await fetch(`./assets/${descriptor.file}?v=${assetVersion}`);
   if (!response.ok) throw new Error(`Could not load ${descriptor.file}`);
   const buffer = await response.arrayBuffer();
   const expected = descriptor.width * descriptor.height * 2;
@@ -215,9 +200,8 @@ lunarColorMap.needsUpdate = true;
 
 function createSurface(data, descriptor, heightOrigin = null, colorRange = null) {
   const { width, height } = descriptor;
-  const spacing = pixelSize(descriptor) * descriptor.stridePixels;
-  const stats = gridStats(data, heightScale(descriptor));
-  const lut = descriptor.body === 'earth' ? earthColorLut : colorLut;
+  const spacing = metadata.pixelSizeM * descriptor.stridePixels;
+  const stats = gridStats(data, metadata.heightScaleM);
   const midpoint = heightOrigin ?? (stats.min + stats.max) / 2;
   const colorMin = colorRange?.min ?? stats.min;
   const colorMax = colorRange?.max ?? stats.max;
@@ -229,16 +213,15 @@ function createSurface(data, descriptor, heightOrigin = null, colorRange = null)
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
       const i = row * width + col;
-      const heightM = data[i] * heightScale(descriptor);
+      const heightM = data[i] * metadata.heightScaleM;
       const t = (heightM - colorMin) / (colorMax - colorMin || 1);
-      const color = lut[THREE.MathUtils.clamp(Math.round(t * 255), 0, 255)];
+      const color = colorLut[THREE.MathUtils.clamp(Math.round(t * 255), 0, 255)];
       positions[3 * i] = (col - (width - 1) / 2) * spacing;
       positions[3 * i + 1] = (heightM - midpoint) * verticalExaggeration;
       positions[3 * i + 2] = ((height - 1) / 2 - row) * spacing;
       const x = positions[3 * i] + offsetX;
       const z = positions[3 * i + 2] + offsetZ;
-      // Synthetic lunar craterlets only belong on the Moon.
-      const relief = descriptor.body === 'earth' ? 0 : terrainHeightOffset(x, z, spacing);
+      const relief = terrainHeightOffset(x, z, spacing);
       positions[3 * i + 1] += relief;
       if (colorUV) {
         colorUV[2 * i] = x / colorTileMeters;
@@ -319,7 +302,7 @@ function addSiteMarker(view, descriptor, data) {
   let x = 0, z = 0, heightM;
   if (viewMode !== 'overview') {
     const row = Math.floor(view.height / 2), col = Math.floor(view.width / 2);
-    heightM = data[row * view.width + col] * heightScale(descriptor);
+    heightM = data[row * view.width + col] * metadata.heightScaleM;
   } else {
     // Mark the De Gerlache detail-tile center on the polar-cap overview.
     const p = projectPolar(metadata.detail.centerLatitude, metadata.detail.centerLongitude);
@@ -363,11 +346,10 @@ function sampleTerrain({ data, descriptor, positions }, spacing, x, z) {
   const c0 = Math.floor(col), r0 = Math.floor(row);
   const c1 = Math.min(c0 + 1, descriptor.width - 1), r1 = Math.min(r0 + 1, descriptor.height - 1);
   const tx = col - c0, ty = row - r0;
-  const scale = heightScale(descriptor);
-  const a = data[r0 * descriptor.width + c0] * scale;
-  const b = data[r0 * descriptor.width + c1] * scale;
-  const c = data[r1 * descriptor.width + c0] * scale;
-  const d = data[r1 * descriptor.width + c1] * scale;
+  const a = data[r0 * descriptor.width + c0] * metadata.heightScaleM;
+  const b = data[r0 * descriptor.width + c1] * metadata.heightScaleM;
+  const c = data[r1 * descriptor.width + c0] * metadata.heightScaleM;
+  const d = data[r1 * descriptor.width + c1] * metadata.heightScaleM;
   // Use the same triangle and vertex offsets as the rendered mesh.
   const interpolate = (a, b, c, d) => tx + ty <= 1
     ? a + (b - a) * tx + (c - a) * ty
@@ -380,11 +362,12 @@ function sampleTerrain({ data, descriptor, positions }, spacing, x, z) {
 
 function updateWalkCamera(dt = 1 / 60, snap = false) {
   const forward = new THREE.Vector3(Math.sin(walkYaw + cameraOrbit), 0, -Math.cos(walkYaw + cameraOrbit));
-  const horizontalDistance = walkCameraDistance * Math.cos(walkPitch);
+  const cameraDistance = 15;
+  const horizontalDistance = cameraDistance * Math.cos(walkPitch);
   const cameraX = rover.position.x - forward.x * horizontalDistance;
   const cameraZ = rover.position.z - forward.z * horizontalDistance;
   const cameraGround = terrainAt(cameraX, cameraZ);
-  const cameraY = Math.max(rover.position.y + 2.5 + walkCameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
+  const cameraY = Math.max(rover.position.y + 2.5 + cameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
   const target = new THREE.Vector3(
     rover.position.x + forward.x * 1.35,
     rover.position.y + 2.4,
@@ -405,13 +388,6 @@ function updateWalkCamera(dt = 1 / 60, snap = false) {
 }
 
 function updateDriveTelemetry() {
-  if (isEarth()) {
-    // Driving the Earth analog: keep showing conditions at the paired Moon site (its centre).
-    const moon = REGIONS[earthRegion];
-    if (moon) simulation.updateRoverPosition(moon.lat, moon.lon, moonRegionStats?.[earthRegion]?.meanSlope,
-      `Mean slope, Moon site (20 km LOLA)`);
-    return;
-  }
   const { x, z } = rover.position;
   const { descriptor, fine } = viewData;
   const spacing = currentView.spacing;
@@ -442,53 +418,35 @@ function updateDriveTelemetry() {
     const riseZ = elevation(px, pz + step) - elevation(px, pz - step);
     slope = THREE.MathUtils.radToDeg(Math.atan(Math.hypot(riseX, riseZ) / (2 * step)));
   }
-  const environment = simulation.updateRoverPosition(lat, lon, slope, `Local LOLA slope (${step} m grid)`);
-  if (!environment) return;
-  const longitude = THREE.MathUtils.degToRad(lon);
-  const { east: solarEast, north: solarNorth, up } = environment;
-  driveSunOffset.set(
-    solarEast * Math.cos(longitude) + solarNorth * Math.sin(longitude),
-    up,
-    solarEast * Math.sin(longitude) - solarNorth * Math.cos(longitude),
-  ).multiplyScalar(36);
-  keyLight.intensity = up > 0 ? 4 : 0;
+  simulation.updateRoverPosition(lat, lon, slope, `Local LOLA slope (${step} m grid)`);
 }
 
-function showPlaybackSpeed() {
-  const { running, speed } = simulation.clock.read();
-  const rate = isEarth() ? 1 : running ? speed : 0;
-  const kmh = Math.hypot(dynamics.vx, dynamics.vz) * 3.6 * rate;
-  $('walk-pace').textContent = `${kmh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km/h`;
-}
-
-function updateWalker(simulatedDt, frameDt) {
+function updateWalker(dt) {
   const axis = (a, b, c, d) => Number(walkKeys.has(a) || walkKeys.has(b)) -
     Number(walkKeys.has(c) || walkKeys.has(d));
-  dynamics.update(simulatedDt, axis('w', 'arrowup', 's', 'arrowdown'),
+  const speed = dynamics.update(dt, axis('w', 'arrowup', 's', 'arrowdown'),
     axis('d', 'arrowright', 'a', 'arrowleft'), walkKeys.has(' '),
     (currentView.width - 1) * currentView.spacing / 2 - 4,
     (currentView.height - 1) * currentView.spacing / 2 - 4);
   walkYaw = dynamics.yaw;
-  updateWalkCamera(frameDt);
-  walkHudElapsed += frameDt;
+  updateWalkCamera(dt);
+  walkHudElapsed += dt;
   if (walkHudElapsed > 0.12) {
     const distance = dynamics.distance;
     $('walk-distance').textContent = distance < 1000 ? `${distance.toFixed(0)} m` : `${(distance / 1000).toFixed(2)} km`;
-    showPlaybackSpeed();
+    $('walk-pace').textContent = `${(speed * 3.6).toFixed(1)} km/h`;
     $('walk-ground').textContent = `${Math.round(terrainAt(rover.position.x, rover.position.z).elevation).toLocaleString()} m`;
     updateDriveTelemetry();
     walkHudElapsed = 0;
   }
 }
 
-function resetRover(spawn = null) {
-  // spawn keeps the rover's spot and heading when switching between Moon and Earth.
-  const x = spawn?.x ?? (viewMode === 'crater' ? metadata.craterSpawn.offsetX : 0);
-  const z = spawn?.z ?? (viewMode === 'crater' ? metadata.craterSpawn.offsetZ : 0);
-  walkYaw = spawn?.yaw ?? (viewMode === 'crater' ? Math.PI / 4 : 0);
+function resetRover() {
+  const x = viewMode === 'crater' ? metadata.craterSpawn.offsetX : 0;
+  const z = viewMode === 'crater' ? metadata.craterSpawn.offsetZ : 0;
+  walkYaw = viewMode === 'crater' ? Math.PI / 4 : 0;
   walkPitch = 0.16;
   cameraOrbit = 0;
-  walkCameraDistance = DEFAULT_WALK_CAMERA_DISTANCE;
   dynamics = new RoverDynamics(rover, terrainAt, x, z, walkYaw);
   $('walk-distance').textContent = '0 m';
   $('walk-pace').textContent = '0.0 km/h';
@@ -499,24 +457,21 @@ function resetRover(spawn = null) {
   updateDriveTelemetry();
 }
 
-function enterWalkMode(spawn = null) {
+function enterWalkMode() {
   scene.add(rover);
   keyLight.castShadow = true;
+  ambientLight.intensity = 0.45;
+  fillLight.intensity = 0.18;
+  sun.visible = true;
   if (siteMarker) siteMarker.visible = false;
   walkMode = true;
   controls.enabled = false;
   document.querySelector('.app-shell').classList.add('walk-mode');
   $('walk-hud').hidden = false;
-  const earth = isEarth();
-  simulation.setWorld(earth ? 'earth' : 'moon');
-  driveTelemetry.hidden = false; // on Earth it shows the paired Moon site
-  const paceButton = $('walk-pace').closest('button');
-  paceButton.dataset.method = earth ? 'earthVelocity' : 'velocity';
-  paceButton.querySelector('span').textContent = earth ? 'SPEED' : 'PLAYBACK SPEED';
-  $('walk-ground').closest('button').dataset.method = earth ? 'earthGround' : 'ground';
+  driveTelemetry.hidden = false;
   simulation.clock.start();
   renderer.domElement.focus({ preventScroll: true });
-  resetRover(spawn);
+  resetRover();
 }
 
 function exitWalkMode() {
@@ -528,9 +483,9 @@ function exitWalkMode() {
   controls.enabled = true;
   if (rover) scene.remove(rover);
   keyLight.castShadow = false;
-  keyLight.intensity = 4;
-  keyLight.position.copy(sunOffset);
-  keyLight.target.position.set(0, 0, 0);
+  ambientLight.intensity = 1.35;
+  fillLight.intensity = 0.55;
+  sun.visible = false;
   if (siteMarker) siteMarker.visible = true;
   document.querySelector('.app-shell').classList.remove('walk-mode');
   $('walk-hud').hidden = true;
@@ -547,9 +502,7 @@ function updateReadout(view, descriptor) {
   $('relief').textContent = `${(view.stats.max - view.stats.min).toLocaleString(undefined, { maximumFractionDigits: 1 })} m`;
   $('walk-button').hidden = false;
   document.querySelector('.walk-caption').hidden = false;
-  if (isEarth()) {
-    earthReadout($, view, descriptor);
-  } else if (viewMode === 'detail') {
+  if (viewMode === 'detail') {
     $('site-name').textContent = 'De Gerlache Rim 2';
     $('site-coords').textContent = '88.20° S · 64.40° W';
     $('site-tag').textContent = 'LOCAL TILE';
@@ -624,29 +577,14 @@ async function showView(mode) {
     button.setAttribute('aria-pressed', String(active));
   });
   try {
-    const key = mode === 'earth' ? `earth:${earthRegion}:${earthSite ? `${earthSite.lat},${earthSite.lon}` : 'top'}` : mode;
-    if (!viewData || viewData.key !== key) {
-      let descriptor = mode === 'earth' ? earthDescriptor(earthMetadata, earthRegion, earthSite)
-        : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
-      let data;
-      try {
-        data = await readGrid(descriptor);
-      } catch (error) {
-        if (!descriptor.fallback) throw error;
-        console.warn('Earth tile from backend unavailable; using the pre-made top-match tile.', error);
-        descriptor = descriptor.fallback;
-        data = await readGrid(descriptor);
-        earthSite = null; // the HUD should name the tile actually shown
-      }
+    if (!viewData || viewData.mode !== mode) {
+      const descriptor = mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
+      const data = await readGrid(descriptor);
       const fine = mode === 'crater'
         ? { descriptor: metadata.craterDetail, data: await readGrid(metadata.craterDetail) }
         : null;
-      viewData = { mode, key, descriptor, data, fine };
+      viewData = { mode, descriptor, data, fine };
     }
-    if (mode !== 'earth') lastMoonView = mode;
-    applyWorld(scene, mode === 'earth' ? 'earth' : 'moon');
-    setGravity(mode === 'earth' ? earthMetadata.gravity : MOON_GRAVITY);
-    refreshWorldToggle?.();
     clearView();
     const view = createSurface(viewData.data, viewData.descriptor);
     viewData.positions = view.mesh.geometry.attributes.position.array;
@@ -736,25 +674,13 @@ function endLook(event) {
 }
 renderer.domElement.addEventListener('pointerup', endLook);
 renderer.domElement.addEventListener('pointercancel', endLook);
-renderer.domElement.addEventListener('wheel', event => {
-  if (!walkMode) return;
-  walkCameraDistance = THREE.MathUtils.clamp(
-    walkCameraDistance * Math.exp(event.deltaY * 0.001),
-    MIN_WALK_CAMERA_DISTANCE,
-    MAX_WALK_CAMERA_DISTANCE
-  );
-  updateWalkCamera();
-  event.preventDefault();
-}, { passive: false });
 
 const movementKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
 addEventListener('keydown', event => {
   if (!walkMode) return;
   const key = event.key.toLowerCase();
-  if (document.querySelector('.lunar-method-dialog[open]')) return;
   if (key === 'escape') { exitWalkMode(); return; }
   if (driveTelemetry.contains(event.target) || event.target.closest?.('button, a, input, summary')) return;
-  if (key === 't' && !event.repeat) { toggleWorld(); return; }
   if (key === 'r' && !event.repeat) simulation.reset({ resume: simulation.clock.read().running });
   if (movementKeys.has(key)) { walkKeys.add(key); event.preventDefault(); }
 });
@@ -779,67 +705,16 @@ addEventListener('resize', () => {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(walkClock.getDelta(), 0.05);
   if (walkMode) {
-    const earth = isEarth();
-    if (earth) {
-      if (simulation.clock.running) simulation.clock.advance(dt * 1000); // Moon-site telemetry keeps time
-      updateWalker(dt, dt);
-    }
-    else if (simulation.clock.running) updateWalker(simulation.clock.advance(dt * 1000) / 1000, dt);
+    // Drive controls keep their existing real-time pace at every time warp.
+    if (simulation.clock.running) updateWalker(dt);
     else updateWalkCamera(dt);
     keyLight.target.position.copy(rover.position);
-    keyLight.position.copy(rover.position).add(earth ? sunOffset : driveSunOffset);
+    keyLight.position.copy(rover.position).add(sunOffset);
+    sun.position.copy(camera.position).addScaledVector(sunDirection, 60000);
   } else {
     controls.update();
   }
   renderer.render(scene, camera);
 });
 
-// ---- Earth analog mode: Moon ⇄ Earth switch (UI lives in earth.js) ----
-let switchingWorld = false;
-async function toggleWorld() {
-  if (!earthMetadata || switchingWorld || enteringDrive) return;
-  switchingWorld = true;
-  try {
-    const driving = walkMode && rover;
-    // Keep the rover's spot (metres from tile centre) and heading across the switch.
-    const spawn = driving ? { x: rover.position.x, z: rover.position.z, yaw: walkYaw } : null;
-    const target = isEarth() ? (moonViewForRegion(earthRegion) ?? lastMoonView) : 'earth';
-    if (driving) exitWalkMode();
-    if (!(await showView(target))) return;
-    if (driving) {
-      const limitX = (currentView.width - 1) * currentView.spacing / 2 - 6;
-      const limitZ = (currentView.height - 1) * currentView.spacing / 2 - 6;
-      spawn.x = THREE.MathUtils.clamp(spawn.x, -limitX, limitX);
-      spawn.z = THREE.MathUtils.clamp(spawn.z, -limitZ, limitZ);
-      enterWalkMode(spawn);
-    }
-  } finally {
-    switchingWorld = false;
-  }
-}
-
-if (earthMetadata) {
-  const refresh = mountEarthControls(earthMetadata, {
-    region: earthRegion,
-    onShowEarth: () => showView('earth'),
-    onRegion(region) {
-      earthRegion = region;
-      earthSite = null; // picker → that region's top match
-      if (isEarth()) showView('earth'); else refreshWorldToggle();
-    },
-    onToggle: toggleWorld,
-  });
-  if (!(earthRegion in earthMetadata.regions)) earthRegion = Object.keys(earthMetadata.regions)[0];
-  refreshWorldToggle = () => refresh({
-    earth: isEarth(),
-    region: earthRegion,
-    moonViewName: moonViewForRegion(earthRegion) === 'crater' ? 'polar crater floor' : 'de Gerlache Rim 2',
-    site: earthSite,
-  });
-  mountHideUi();
-}
-
-// From the atlas: ?world=earth opens the Earth analog; &drive=1 puts the rover straight on it.
-showView(pageParams.get('world') === 'earth' && earthMetadata ? 'earth' : 'overview').then(ok => {
-  if (ok && pageParams.get('drive') === '1') $('walk-button').click();
-});
+showView('overview');
