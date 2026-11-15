@@ -50,6 +50,14 @@
         <table aria-label="Reachable terrain by slope limit"></table>
         <p>Elevation estimate on a 30 m grid over a 15.36 km square.</p>
       </section>
+      <section id="d-shadows" hidden>
+        <h3>Shadow Match</h3>
+        <p></p>
+        <table aria-label="Terrain in shadow by Sun direction">
+          <thead><tr><th scope="col">Sun direction</th><th scope="col">Moon</th><th scope="col">Earth</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
       <div class="pc">
         <div><h3>Pros</h3><ul id="d-pros"></ul></div>
         <div><h3>Cons</h3><ul id="d-cons"></ul></div>
@@ -64,6 +72,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="main.js?v=reachability-2"></script>
+  <script type="module" src="main.js?v=shadow-3"></script>
 </body>
 </html>

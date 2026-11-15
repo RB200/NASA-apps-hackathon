@@ -138,8 +138,9 @@ document.querySelector('[data-close]').onclick = () => {
 let lastResult = null;
 let searchRequest = 0;
 let reachabilityData;
+let shadowData;
 
-const reachabilityKey = match => `${match.lat.toFixed(4)},${match.lon.toFixed(4)}`;
+const terrainKey = match => `${match.lat.toFixed(4)},${match.lon.toFixed(4)}`;
 function loadReachability() {
   return reachabilityData ??= fetch('assets/reachability.json').then(response =>
     response.ok ? response.json() : null).catch(() => null);
@@ -148,16 +149,45 @@ function loadReachability() {
 function scoreReachability(result, region, data) {
   const moon = data?.moon[region];
   if (!moon?.length || !result.matches.length ||
-      !result.matches.every(match => data.earth[reachabilityKey(match)]?.length === moon.length)) return;
+      !result.matches.every(match => data.earth[terrainKey(match)]?.length === moon.length)) return;
   for (const match of result.matches) {
-    const earth = data.earth[reachabilityKey(match)];
+    const earth = data.earth[terrainKey(match)];
     const gap = moon.reduce((sum, value, i) => sum + Math.abs(value - earth[i]), 0) / moon.length;
-    match.terrainScore = match.match;
     match.reachabilityScore = 100 - gap;
-    match.match = 0.8 * match.terrainScore + 0.2 * match.reachabilityScore;
+  }
+  result.includesReachability = true;
+}
+
+function loadShadows() {
+  return shadowData ??= fetch('assets/shadows.json').then(response =>
+    response.ok ? response.json() : null).catch(() => null);
+}
+
+function scoreShadows(result, region, data) {
+  const moon = data?.moon[region];
+  if (!moon?.length || moon.length !== data.directions.length) return;
+  for (const match of result.matches) {
+    const earth = data.earth[terrainKey(match)];
+    if (earth?.length !== moon.length) continue;
+    const gap = moon.reduce((sum, value, i) => sum + Math.abs(value - earth[i]), 0) / moon.length;
+    match.shadows = { score: 100 - gap, moon, earth, directions: data.directions,
+      sunAngle: data.sunAngle, patchKm: data.patchKm };
+  }
+}
+
+function rankMatches(result) {
+  result.includesShadows = result.matches.length > 0 &&
+    result.matches.every(match => Number.isFinite(match.shadows?.score));
+  const reachability = result.includesReachability ? 20 : 0;
+  const shadows = result.includesShadows ? 20 : 0;
+  result.scoreWeights = { terrain: 100 - reachability - shadows, reachability, shadows };
+  if (!reachability && !shadows) return;
+  for (const match of result.matches) {
+    match.terrainScore = match.match;
+    match.match = (result.scoreWeights.terrain * match.terrainScore +
+      reachability * (match.reachabilityScore ?? 0) + shadows * (match.shadows?.score ?? 0)) / 100;
   }
   result.matches.sort((a, b) => b.match - a.match);
-  result.includesReachability = true;
 }
 
 async function search() {
@@ -176,7 +206,12 @@ async function search() {
     result = await res.json();
     result.sample ??= false;
     result.source = 'backend';
-    if (!result.sample) scoreReachability(result, region, await loadReachability());
+    if (!result.sample) {
+      const [reachability, shadows] = await Promise.all([loadReachability(), loadShadows()]);
+      scoreReachability(result, region, reachability);
+      scoreShadows(result, region, shadows);
+      rankMatches(result);
+    }
   } catch {
     result = sampleMatch(region, weights(), 5);
   }
@@ -225,14 +260,15 @@ function renderResults() {
     ? `<span class="tag">Sample data</span> Backend not running, showing placeholder numbers.`
     : r.sample
       ? `<span class="tag">Sample data</span> Placeholder ${(r.sampleParts ?? ['earth', 'moon']).map(p => p === 'earth' ? 'Earth' : 'Moon').join(' + ')} numbers.`
-      : `${r.matches.length} matches for ${selected.name}${r.includesReachability ? ' · includes reachability' : ''}`;
+      : `${r.matches.length} matches for ${selected.name}${r.includesReachability ? ' · includes reachability' : ''}${r.includesShadows ? ' · includes Shadow Match' : ''}`;
   if (!r.matches.length) $('status').textContent = 'No bare-ground Earth terrain matches this region.';
   $('results').innerHTML = r.matches.map((m, i) => `
     <li><button class="result" data-i="${i}">
       <span class="num">${i + 1}</span>
       <img src="${thumbUrl(m.lat, m.lon)}" alt="Satellite view of ${m.name}" loading="lazy">
       <span class="r-txt"><b>${flag(m.cc)} ${m.name}</b><small>${m.country ?? ''}</small>
-        <span class="pct">${Math.round(m.match)}%<small> match</small></span></span>
+        <span class="pct">${Math.round(m.match)}%<small> match</small></span>
+        ${m.shadows ? `<small>${Math.round(m.shadows.score)}% Shadow Match</small>` : ''}</span>
     </button></li>`).join('');
   $('results').querySelectorAll('.result').forEach(b => b.onclick = () => showDetail(r.matches[+b.dataset.i]));
 }
@@ -260,7 +296,7 @@ function missionFit(f) {
 
 async function showReachability(region, match) {
   const panel = $('d-reachability');
-  const location = reachabilityKey(match);
+  const location = terrainKey(match);
   const selection = `${region}:${location}`;
   panel.dataset.selection = selection;
   panel.hidden = true;
@@ -278,14 +314,32 @@ async function showReachability(region, match) {
 
 function showDetail(m) {
   showReachability(selected.id, m);
+  const shadows = $('d-shadows');
+  shadows.hidden = !m.shadows;
+  if (m.shadows) {
+    const { score, moon, earth, directions, sunAngle, patchKm } = m.shadows;
+    shadows.querySelector('h3').textContent = `Shadow Match · ${Math.round(score)}%`;
+    shadows.querySelector('p').textContent =
+      `Share of a ${patchKm} km square in terrain shadow with the Sun ${sunAngle}° above the horizon.`;
+    shadows.querySelector('tbody').innerHTML = directions.map((direction, i) =>
+      `<tr><th scope="row">${direction}</th><td>${moon[i].toFixed(1)}%</td><td>${earth[i].toFixed(1)}%</td></tr>`
+    ).join('');
+  }
   $('list-view').hidden = true;
   $('detail-view').hidden = false;
   $('d-name').textContent = `${flag(m.cc)} ${m.name}`.trim();
   $('d-meta').textContent = `${m.country ? m.country + ' · ' : ''}${m.near ? 'near ' + m.near + ' · ' : ''}${m.lat.toFixed(2)}°, ${m.lon.toFixed(2)}° · 20 × 20 km patch` +
     (m.demSource ? ` · elevation: ${m.demSource}` : '');
+  const scoreWeights = lastResult.scoreWeights;
+  const breakdown = [];
+  if (scoreWeights && scoreWeights.terrain < 100) {
+    breakdown.push(`Terrain ${Math.round(m.terrainScore)}% (${scoreWeights.terrain}% weight)`);
+    if (scoreWeights.reachability) breakdown.push(`Reachability ${Math.round(m.reachabilityScore)}% (${scoreWeights.reachability}% weight)`);
+    if (scoreWeights.shadows) breakdown.push(`Shadow Match ${Math.round(m.shadows.score)}% (${scoreWeights.shadows}% weight)`);
+  }
   $('d-score').innerHTML = `<span class="big">${Math.round(m.match)}%</span> match to ${selected.name}` +
     (lastResult.sample ? ' <span class="tag">Sample data</span>' : '') +
-    (lastResult.includesReachability ? `<p class="muted">Terrain ${Math.round(m.terrainScore)}% (80% weight) · Reachability ${Math.round(m.reachabilityScore)}% (20% weight)</p>` : '');
+    (breakdown.length ? `<p class="muted">${breakdown.join(' · ')}</p>` : '');
 
   // Enter rover: drive this exact Earth spot, with the Moon region one keypress away.
   const sample = lastResult.source !== 'backend';
