@@ -47,7 +47,7 @@ def main() -> None:
             "file": file, "width": rover_tiles.SIZE, "height": rover_tiles.SIZE, "stridePixels": 1,
             "pixelSizeM": rover_tiles.SPACING_M, "heightScaleM": 1.0,
             "centerLatitude": m["lat"], "centerLongitude": m["lon"],
-            "name": m["name"], "country": m["country"], "near": m.get("near"), "demSource": source,
+            "name": m["name"], "country": m["country"], "cc": m.get("cc"), "near": m.get("near"), "demSource": source,
             "minM": int(grid.min()), "maxM": int(grid.max()),
         }
         print(f"{region:20s} → {m['name']}, {m['country']} ({m['match']:.0f}%)  "

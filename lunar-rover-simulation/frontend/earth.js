@@ -7,6 +7,12 @@ import * as THREE from 'three';
 
 export const MOON_GRAVITY = 1.62;
 
+// ISO 3166 two-letter code → flag emoji (e.g. "CL" → 🇨🇱). Empty if unknown.
+export function flagEmoji(cc) {
+  return /^[A-Za-z]{2}$/.test(cc ?? '')
+    ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
+}
+
 // Moon views in terrain.js that show a given Artemis region. Regions without their own Moon tile
 // fall back to the crater view and say so in the HUD.
 const MOON_VIEW_FOR_REGION = { 'de-gerlache-rim-2': 'detail' };
@@ -48,7 +54,7 @@ export function earthSiteFromUrl(params) {
   const lat = Number(params.get('lat')), lon = Number(params.get('lon'));
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return { lat, lon, name: params.get('name') || 'Earth match', country: params.get('country') || '',
-    match: Number(params.get('match')) || null };
+    cc: params.get('cc') || '', match: Number(params.get('match')) || null };
 }
 
 // "← Field Atlas" goes back to the atlas with this region's matches open.
@@ -89,7 +95,7 @@ export function earthDescriptor(md, region, chosen = null) {
     ...top, file: null, near: null, demSource: null,
     url: `${API_BASE}/rover-tile?lat=${chosen.lat}&lon=${chosen.lon}`,
     centerLatitude: chosen.lat, centerLongitude: chosen.lon,
-    name: chosen.name, country: chosen.country, match: chosen.match ?? entry.match,
+    name: chosen.name, country: chosen.country, cc: chosen.cc, match: chosen.match ?? entry.match,
     fallback: { ...top, fallbackNote: true },   // backend offline → region's pre-made tile
   };
 }
@@ -147,11 +153,14 @@ export function applyWorld(scene, body) {
     ? '<span class="live-dot"></span> NASA SRTM <span class="top-divider">/</span> 30 M SOURCE'
     : moonLook.mark;
   if (coverage) coverage.textContent = earth ? 'EARTH ANALOG · NASA SRTMGL1 · GRAVITY 9.81 M/S²' : moonLook.coverage;
+  document.querySelectorAll('.height-ref').forEach(el => {
+    el.textContent = earth ? 'above sea level' : 'vs. Moon reference radius (1,737.4 km)';
+  });
 }
 
 export function earthReadout($, view, descriptor) {
   const fmt = (v, ns, ew) => `${Math.abs(v).toFixed(2)}° ${v >= 0 ? ns[0] : ns[1]}`;
-  $('site-name').textContent = descriptor.name;
+  $('site-name').textContent = `${flagEmoji(descriptor.cc)} ${descriptor.name}`.trim();
   $('site-coords').textContent = `${descriptor.country ?? ''} · ${fmt(descriptor.centerLatitude, 'NS')} · ${fmt(descriptor.centerLongitude, 'EW')}`;
   $('site-tag').textContent = descriptor.fallbackNote ? 'TOP MATCH (OFFLINE)' : 'EARTH ANALOG';
   $('view-note').textContent = `EARTH ANALOG OF ${REGION_NAMES[descriptor.region]?.toUpperCase() ?? ''} · ` +
@@ -160,29 +169,39 @@ export function earthReadout($, view, descriptor) {
   document.querySelector('.walk-caption').textContent = 'Earth rover · same rover, Earth gravity (9.81 m/s²)';
 }
 
-// Adds: an "Earth analog" view button + region picker to the control panel, and a Moon/Earth
-// switch to the drive HUD. Returns a function that refreshes the switch label.
-export function mountEarthControls(md, { region, onShowEarth, onRegion, onToggle }) {
-  const switchGroup = document.querySelector('.view-switch');
-  const earthButton = document.createElement('button');
-  earthButton.className = 'view-button';
-  earthButton.dataset.view = 'earth';
-  earthButton.setAttribute('aria-pressed', 'false');
-  earthButton.textContent = 'Earth analog';
-  earthButton.addEventListener('click', onShowEarth);
-  switchGroup.append(earthButton);
+// Simpler panel: region picker → big "Moon | Earth" switch → small "whole south pole" link.
+// The original view buttons stay in the page (hidden) so terrain.js keeps working unchanged.
+// Also: the "where are we" badge (flag + place) and the Moon/Earth switch in the drive HUD.
+export function mountEarthControls(md, { region, onShowEarth, onShowMoon, onRegion, onToggle }) {
+  const panel = document.querySelector('.control-panel');
+  const top = document.createElement('div');
+  top.className = 'world-controls';
+  top.innerHTML = `
+    <label class="earth-picker"><span>Artemis landing region</span><select id="earth-region"></select></label>
+    <div class="world-switch" role="group" aria-label="Moon or Earth">
+      <button type="button" data-world="moon">🌑 Moon</button>
+      <button type="button" data-world="earth">🌍 Earth analog</button>
+    </div>
+    <button type="button" class="overview-link">See the whole lunar south pole →</button>`;
+  panel.prepend(top);
 
-  const picker = document.createElement('label');
-  picker.className = 'earth-picker';
-  picker.innerHTML = '<span>Artemis region</span><select id="earth-region"></select>';
-  const select = picker.querySelector('select');
+  const select = top.querySelector('select');
   for (const [id, entry] of Object.entries(md.regions)) {
     const site = md.sites[entry.site];
-    select.add(new Option(`${REGION_NAMES[id] ?? id} → ${site.name} (${Math.round(entry.match)}%)`, id));
+    select.add(new Option(`${REGION_NAMES[id] ?? id}  →  ${flagEmoji(site.cc)} ${site.name} (${Math.round(entry.match)}%)`, id));
   }
   select.value = region in md.regions ? region : Object.keys(md.regions)[0];
   select.addEventListener('change', () => onRegion(select.value));
-  switchGroup.after(picker);
+
+  let earthNow = false;
+  top.querySelectorAll('.world-switch button').forEach(button => button.addEventListener('click', () => {
+    const wantEarth = button.dataset.world === 'earth';
+    if (wantEarth !== earthNow) onToggle();          // keeps the rover's spot when driving
+    else if (wantEarth) onShowEarth();
+    else onShowMoon();                                // e.g. from the whole-pole overview
+  }));
+  top.querySelector('.overview-link').addEventListener('click',
+    () => document.querySelector('.view-button[data-view="overview"]')?.click());
 
   const toggle = document.createElement('button');
   toggle.type = 'button';
@@ -196,16 +215,36 @@ export function mountEarthControls(md, { region, onShowEarth, onRegion, onToggle
   note.id = 'world-note';
   document.querySelector('.walk-hud')?.append(note);
 
-  return function refresh({ earth, region: current, moonViewName, site = null }) {
-    toggle.innerHTML = earth ? 'Switch to Moon <kbd>T</kbd>' : 'Switch to Earth <kbd>T</kbd>';
+  const badge = document.getElementById('where-badge');
+
+  return function refresh({ earth, region: current, moonViewName, site = null, view = null }) {
+    earthNow = earth;
+    top.querySelectorAll('.world-switch button').forEach(b =>
+      b.classList.toggle('active', (b.dataset.world === 'earth') === earth && view !== 'overview'));
+    select.value = current;
+    toggle.innerHTML = earth ? '🌑 Switch to Moon <kbd>T</kbd>' : '🌍 Switch to Earth <kbd>T</kbd>';
     const entry = md.regions[current];
-    const shown = site ?? { name: md.sites[entry.site].name, match: entry.match };
-    note.textContent = earth
-      ? `Earth analog of ${REGION_NAMES[current] ?? current}: ${shown.name}` +
-        (shown.match ? ` (${Math.round(shown.match)}% terrain match)` : '')
-      : hasOwnMoonTile(current)
-        ? `Moon: ${REGION_NAMES[current]}`
-        : `Moon: ${moonViewName} (no rover tile for ${REGION_NAMES[current] ?? current} yet)`;
+    const top_ = md.sites[entry.site];
+    const shown = site ?? { name: top_.name, country: top_.country, cc: top_.cc, match: entry.match };
+    const regionName = REGION_NAMES[current] ?? current;
+    let line1, line2;
+    if (earth) {
+      line1 = `${flagEmoji(shown.cc)} ${shown.name}`.trim();
+      line2 = `${shown.country ? shown.country + ' · ' : ''}Earth analog of ${regionName}` +
+        (shown.match ? ` · ${Math.round(shown.match)}% terrain match` : '');
+    } else if (view === 'overview') {
+      line1 = '🌑 Lunar south pole';
+      line2 = 'Whole-cap overview · NASA LRO LOLA';
+    } else if (hasOwnMoonTile(current)) {
+      line1 = `🌑 ${regionName}`;
+      line2 = 'Moon · Artemis III candidate region · NASA LRO LOLA 5 m';
+    } else {
+      line1 = `🌑 ${moonViewName[0].toUpperCase()}${moonViewName.slice(1)}`;
+      line2 = `Moon · stand-in view (no rover tile for ${regionName} yet)`;
+    }
+    badge.hidden = false;
+    badge.innerHTML = `<strong>${line1}</strong><span>${line2}</span>`;
+    note.textContent = `${line1} · ${line2}`;
   };
 }
 

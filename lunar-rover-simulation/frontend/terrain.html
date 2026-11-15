@@ -23,15 +23,12 @@
     <div class="vignette" aria-hidden="true"></div>
 
     <header class="topbar">
-      <a class="back-link" href="../../frontend/index.html"><span aria-hidden="true">←</span> Field Atlas</a>
+      <a class="back-link" href="../../frontend/index.html"><span aria-hidden="true">←</span> Back to matches</a>
       <div class="top-mark"><span class="live-dot"></span> LOLA POLAR DEM <span class="top-divider">/</span> 5 M SOURCE</div>
     </header>
 
-    <section class="intro">
-      <div class="eyebrow">LUNAR SOUTH POLE · TERRAIN STUDY</div>
-      <h1>Read the<br><em>shape of the Moon.</em></h1>
-      <p>Explore LOLA elevation as a three-dimensional surface. Orbit, tilt, and compare the rugged polar terrain.</p>
-    </section>
+    <!-- "Where are we": flag + place, filled by earth.js -->
+    <div class="where-badge" id="where-badge" hidden></div>
 
     <aside class="control-panel" aria-label="Terrain controls">
       <div class="panel-kicker"><span>01</span> SURFACE VIEW</div>
@@ -51,19 +48,21 @@
       </div>
 
       <div class="metric-grid">
-        <div class="metric"><span class="metric-label">LOW</span><strong id="min-height">—</strong><small>relative elevation</small></div>
-        <div class="metric"><span class="metric-label">HIGH</span><strong id="max-height">—</strong><small>relative elevation</small></div>
-        <div class="metric metric-wide"><span class="metric-label">RELIEF IN VIEW</span><strong id="relief">—</strong><small>high point minus low point</small></div>
+        <div class="metric"><span class="metric-label">LOWEST</span><strong id="min-height">—</strong><small class="height-ref">relative elevation</small></div>
+        <div class="metric"><span class="metric-label">HIGHEST</span><strong id="max-height">—</strong><small class="height-ref">relative elevation</small></div>
+        <div class="metric metric-wide"><span class="metric-label">HEIGHT RANGE</span><strong id="relief">—</strong><small>highest minus lowest point in this view</small></div>
       </div>
 
-      <div class="control-rule"></div>
-      <label class="slider-label" for="exaggeration"><span>Vertical exaggeration</span><output id="exag-value">2.0×</output></label>
-      <input id="exaggeration" type="range" min="1" max="5" step="0.25" value="2" />
-      <div class="slider-ends"><span>True scale</span><span>5×</span></div>
-
-      <button id="reset-view" class="reset-button"><span aria-hidden="true">⟳</span> Reset view</button>
       <button id="walk-button" class="walk-button"><span class="walk-button-mark" aria-hidden="true">↗</span> Drive inside the crater</button>
       <p class="walk-caption">Lunar rover · spawns inside the crater</p>
+
+      <details class="view-options">
+        <summary>View options</summary>
+        <label class="slider-label" for="exaggeration"><span>Exaggerate heights</span><output id="exag-value">2.0×</output></label>
+        <input id="exaggeration" type="range" min="1" max="5" step="0.25" value="2" />
+        <div class="slider-ends"><span>True scale</span><span>5×</span></div>
+        <button id="reset-view" class="reset-button"><span aria-hidden="true">⟳</span> Reset view</button>
+      </details>
     </aside>
 
     <div class="view-note" id="view-note">NATIVE 5 M PIXELS <span>·</span> 2.56 × 2.56 KM WINDOW</div>

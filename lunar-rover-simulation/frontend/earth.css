@@ -1,5 +1,4 @@
 /* Earth analog mode (earth.js). Kept separate from terrain.css. */
-.view-switch { grid-template-columns: repeat(4, 1fr); }
 
 .earth-picker { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; color: var(--muted); font-family: var(--mono); font-size: 8px; letter-spacing: .09em; text-transform: uppercase; }
 .earth-picker select { width: 100%; min-height: 31px; padding: 0 8px; border: 1px solid var(--line); border-radius: 3px; background: rgba(0,0,0,.25); color: var(--ink); font-family: inherit; font-size: 10px; letter-spacing: 0; text-transform: none; }
@@ -25,3 +24,30 @@
 .app-shell.walk-mode.ui-hidden .walk-crosshair { display: none !important; }
 .app-shell.walk-mode.ui-hidden .hide-ui-button { opacity: .45; }
 .app-shell.walk-mode.ui-hidden .hide-ui-button:hover { opacity: 1; }
+
+/* ---- Simpler rover page ---- */
+/* The original view buttons/kicker/intro stay in the DOM for terrain.js but are not shown. */
+.control-panel .panel-kicker, .control-panel .view-switch, .intro,
+.bottomline #coverage-note, .bottomline .legend, .view-note { display: none !important; }
+
+.world-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.world-controls .earth-picker { margin-top: 0; }
+.world-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,.25); }
+.world-switch button { min-height: 40px; border: 0; border-radius: 4px; background: transparent; color: #b9c2c4; font-size: 13px; font-weight: 600; cursor: pointer; }
+.world-switch button:hover { color: var(--ink); }
+.world-switch button.active { background: #263139; color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
+.overview-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; cursor: pointer; }
+.overview-link:hover { color: var(--ink); text-decoration: underline; }
+
+/* "Where are we" badge, top left under the back link */
+.where-badge { position: absolute; z-index: 3; top: 64px; left: 24px; display: flex; flex-direction: column; gap: 3px;
+  max-width: min(520px, calc(100vw - 48px)); padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px;
+  background: rgba(11,17,21,.78); backdrop-filter: blur(10px); }
+.where-badge[hidden] { display: none; }
+.where-badge strong { font-size: 20px; font-weight: 600; color: #fff; }
+.where-badge span { color: #b9c2c4; font-size: 12px; }
+.app-shell.walk-mode .where-badge { display: none; }
+
+.view-options { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.view-options summary { cursor: pointer; color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.view-options[open] summary { margin-bottom: 10px; }

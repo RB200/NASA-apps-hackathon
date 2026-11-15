@@ -66,6 +66,7 @@ def load_earth(path: Path, rows: list[dict]) -> dict:
         "name": [(r.get("name") or "").strip() or None for r in rows],
         "country": [(r.get("country") or "").strip() or None for r in rows],
         "near": [(r.get("near") or "").strip() or None for r in rows],
+        "cc": [(r.get("cc") or "").strip().upper() or None for r in rows],
     }
 
 
@@ -153,6 +154,7 @@ def match(region: str, constraints: list[str], n: int, include_snow: bool) -> di
             "name": EARTH["name"][i],
             "country": EARTH["country"][i],
             "near": EARTH["near"][i],
+            "cc": EARTH["cc"][i],
             "lat": float(EARTH["lat"][i]),
             "lon": float(EARTH["lon"][i]),
             "match": round(float(total[j]), 1),

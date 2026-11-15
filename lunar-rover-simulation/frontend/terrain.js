@@ -303,16 +303,19 @@ function clearView() {
 function addGround(width, depth, y) {
   ground = new THREE.Mesh(
     new THREE.PlaneGeometry(width * 1.18, depth * 1.18),
-    new THREE.MeshStandardMaterial({ color: '#0c131a', roughness: 1, metalness: 0 })
+    // Unlit, same colour as the sky/space behind it: a lit slab under sloped terrain made the
+    // terrain look like a tilted sheet floating above a floor.
+    new THREE.MeshBasicMaterial({ color: scene.background?.clone?.() ?? new THREE.Color('#080d13') })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = y;
+  ground.visible = false; // purely decorative; hidden so sloped tiles don't look like floating sheets
   scene.add(ground);
 }
 
 function projectPolar(lat, lon) {
   const rho = 2 * metadata.referenceRadiusM * Math.tan(THREE.MathUtils.degToRad(90 + lat) / 2);
-  return { x: rho * Math.sin(THREE.MathUtils.degToRad(lon)), z: -rho * Math.cos(THREE.MathUtils.degToRad(lon)) };
+  return { x: rho * Math.sin(THREE.MathUtils.degToRad(lon)), z: rho * Math.cos(THREE.MathUtils.degToRad(lon)) }; // +z = toward 0° lon = raster up
 }
 
 function addSiteMarker(view, descriptor, data) {
@@ -324,8 +327,8 @@ function addSiteMarker(view, descriptor, data) {
     // Mark the De Gerlache detail-tile center on the polar-cap overview.
     const p = projectPolar(metadata.detail.centerLatitude, metadata.detail.centerLongitude);
     const stride = descriptor.stridePixels;
-    const col = THREE.MathUtils.clamp(Math.round((p.x / metadata.pixelSizeM + metadata.sampleProjectionOffset - 1) / stride), 0, view.width - 1);
-    const row = THREE.MathUtils.clamp(Math.round((metadata.lineProjectionOffset - 1 - p.z / metadata.pixelSizeM) / stride), 0, view.height - 1);
+    const col = THREE.MathUtils.clamp(Math.round((p.x / metadata.pixelSizeM + metadata.sampleProjectionOffset) / stride), 0, view.width - 1);
+    const row = THREE.MathUtils.clamp(Math.round((metadata.lineProjectionOffset - p.z / metadata.pixelSizeM) / stride), 0, view.height - 1);
     x = (col - (view.width - 1) / 2) * view.spacing;
     z = ((view.height - 1) / 2 - row) * view.spacing;
     heightM = data[row * view.width + col] * metadata.heightScaleM;
@@ -418,8 +421,9 @@ function updateDriveTelemetry() {
   // Invert prepare_lola_3d.py's south-polar stereographic pixel mapping.
   const col = descriptor.firstColumn + (descriptor.width - 1) * descriptor.stridePixels / 2;
   const row = descriptor.firstRow + (descriptor.height - 1) * descriptor.stridePixels / 2;
-  const east = (col + 1 - metadata.sampleProjectionOffset) * metadata.pixelSizeM + x;
-  const north = (row + 1 - metadata.lineProjectionOffset) * metadata.pixelSizeM - z;
+  // Same convention as prepare_lola_3d.py / GDAL: y toward 0° longitude = raster up = +z.
+  const east = (col - metadata.sampleProjectionOffset) * metadata.pixelSizeM + x;
+  const north = (metadata.lineProjectionOffset - row) * metadata.pixelSizeM + z;
   const lat = -90 + THREE.MathUtils.radToDeg(2 * Math.atan(Math.hypot(east, north) / (2 * metadata.referenceRadiusM)));
   const lon = THREE.MathUtils.radToDeg(Math.atan2(east, north));
 
@@ -822,6 +826,7 @@ if (earthMetadata) {
   const refresh = mountEarthControls(earthMetadata, {
     region: earthRegion,
     onShowEarth: () => showView('earth'),
+    onShowMoon: () => showView(moonViewForRegion(earthRegion)),
     onRegion(region) {
       earthRegion = region;
       earthSite = null; // picker → that region's top match
@@ -835,11 +840,15 @@ if (earthMetadata) {
     region: earthRegion,
     moonViewName: moonViewForRegion(earthRegion) === 'crater' ? 'polar crater floor' : 'de Gerlache Rim 2',
     site: earthSite,
+    view: viewMode,
   });
   mountHideUi();
 }
 
 // From the atlas: ?world=earth opens the Earth analog; &drive=1 puts the rover straight on it.
-showView(pageParams.get('world') === 'earth' && earthMetadata ? 'earth' : 'overview').then(ok => {
+// Opened for a region (from the atlas): start on that region's terrain, not the whole-pole overview.
+const startView = pageParams.get('world') === 'earth' && earthMetadata ? 'earth'
+  : pageParams.has('region') && earthMetadata ? moonViewForRegion(earthRegion) : 'overview';
+showView(startView).then(ok => {
   if (ok && pageParams.get('drive') === '1') $('walk-button').click();
 });

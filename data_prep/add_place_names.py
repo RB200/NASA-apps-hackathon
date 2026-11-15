@@ -7,6 +7,7 @@ For each patch:
            (Natural Earth geography regions); if none, "Near <town>". Named analog sites keep their name.
   country  "<state/province>, <country>" (country from Natural Earth borders; state from the nearest GeoNames town)
   near     "<nearest town> (<km> km)" (GeoNames towns with population ≥ 1000)
+  cc       ISO 3166 two-letter country code (for flag emojis in the app)
 
 Sources (in data_prep/cache/names/):
   GeoNames cities1000.zip, admin1CodesASCII.txt, countryInfo.txt  https://download.geonames.org/export/dump/  (CC BY 4.0)
@@ -93,14 +94,17 @@ def nearest(xyz_towns, lats, lons, chunk=400):
 def main():
     rows = list(csv.DictReader(open(CSV, newline="")))
     cols = list(rows[0].keys())
-    if "near" not in cols:
-        cols.append("near")
+    for extra in ("near", "cc"):
+        if extra not in cols:
+            cols.append(extra)
 
     regions = polygons(NAMES / "ne_10m_geography_regions_polys.geojson",
                        lambda p: p.get("FEATURECLA") in REGION_CLASSES,
                        lambda p: tidy(p.get("NAME_EN") or p.get("NAME") or ""))
     borders = polygons(NAMES / "ne_50m_admin_0_countries.geojson", lambda p: True,
                        lambda p: p.get("NAME") or p.get("ADMIN"))   # short common name, e.g. "China"
+    border_cc = polygons(NAMES / "ne_50m_admin_0_countries.geojson", lambda p: True,
+                         lambda p: next((c for c in (p.get("ISO_A2_EH"), p.get("ISO_A2")) if c and c != "-99"), ""))
     town_names, town_xyz, town_cc, town_adm, country_names = load_towns()
     # Natural Earth vs GeoNames spell a few countries differently; match them by ISO code instead.
     iso = {p.get("NAME") or p.get("ADMIN"): p.get("ISO_A2_EH") or p.get("ISO_A2")
@@ -120,6 +124,7 @@ def main():
         state = town_adm[j] if same_country else ""
         region = containing(*regions, pt)
         r["near"] = f"{town} ({km:.0f} km)"
+        r["cc"] = containing(*border_cc, pt, smallest=False) or town_cc[j]
         if not r.get("name"):
             r["name"] = region or f"Near {town}"
             named_region += bool(region)
