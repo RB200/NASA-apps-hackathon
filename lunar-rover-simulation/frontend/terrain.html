@@ -34,6 +34,8 @@
 
     <aside class="control-panel" aria-label="Terrain controls">
       <div class="panel-kicker"><span>01</span> SURFACE VIEW</div>
+      <label class="slider-label" for="region-select">Lunar region</label>
+      <select id="region-select" aria-label="Choose lunar region"><option value="">Choose a region</option></select>
       <div class="view-switch" role="group" aria-label="Choose terrain scale">
         <button class="view-button" data-view="detail" aria-pressed="false">De Gerlache 5 m</button>
         <button class="view-button" data-view="crater" aria-pressed="false">Crater view</button>
@@ -92,6 +94,6 @@
     <details id="drive-telemetry" class="lunar-telemetry" hidden></details>
     <div class="walk-crosshair" id="walk-crosshair" aria-hidden="true" hidden><span></span></div>
   </main>
-  <script type="module" src="terrain.js?v=sun-shadows"></script>
+  <script type="module" src="terrain.js?v=rover-focus"></script>
 </body>
 </html>

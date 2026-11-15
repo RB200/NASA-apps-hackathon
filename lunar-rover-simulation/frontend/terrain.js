@@ -55,6 +55,10 @@ const metadata = await fetch(`./assets/lola-5m-metadata.json?v=${assetVersion}`)
   if (!r.ok) throw new Error('Could not load DEM metadata');
   return r.json();
 });
+const regionSelect = $('region-select');
+for (const [id, region] of Object.entries(metadata.regions)) {
+  regionSelect.add(new Option(region.name, id));
+}
 let surface = null;
 let fineSurface = null;
 let ground = null;
@@ -70,6 +74,7 @@ let cameraOrbit = 0;
 let enteringDrive = false;
 let walkYaw = 0;
 let walkPitch = 0.08;
+const roverFocus = new THREE.Vector3();
 const walkCameraTarget = new THREE.Vector3();
 let walkCameraReady = false;
 let lookPointerId = null;
@@ -362,26 +367,21 @@ function sampleTerrain({ data, descriptor, positions }, spacing, x, z) {
 
 function updateWalkCamera(dt = 1 / 60, snap = false) {
   const forward = new THREE.Vector3(Math.sin(walkYaw + cameraOrbit), 0, -Math.cos(walkYaw + cameraOrbit));
-  const cameraDistance = 15;
+  const cameraDistance = 15 / Math.min(1, camera.aspect);
   const horizontalDistance = cameraDistance * Math.cos(walkPitch);
-  const cameraX = rover.position.x - forward.x * horizontalDistance;
-  const cameraZ = rover.position.z - forward.z * horizontalDistance;
+  rover.updateMatrixWorld(true);
+  walkCameraTarget.copy(roverFocus).applyMatrix4(rover.matrixWorld);
+  const cameraX = walkCameraTarget.x - forward.x * horizontalDistance;
+  const cameraZ = walkCameraTarget.z - forward.z * horizontalDistance;
   const cameraGround = terrainAt(cameraX, cameraZ);
-  const cameraY = Math.max(rover.position.y + 2.5 + cameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
-  const target = new THREE.Vector3(
-    rover.position.x + forward.x * 1.35,
-    rover.position.y + 2.4,
-    rover.position.z + forward.z * 1.35
-  );
+  const cameraY = Math.max(walkCameraTarget.y + cameraDistance * Math.sin(walkPitch), cameraGround.y + 1.6);
   const cameraPosition = new THREE.Vector3(cameraX, cameraY, cameraZ);
   if (snap || !walkCameraReady) {
     camera.position.copy(cameraPosition);
-    walkCameraTarget.copy(target);
     walkCameraReady = true;
   } else {
     const follow = 1 - Math.exp(-dt * 8);
     camera.position.lerp(cameraPosition, follow);
-    walkCameraTarget.lerp(target, follow);
   }
   camera.position.y = Math.max(camera.position.y, terrainAt(camera.position.x, camera.position.z).y + 1.6);
   camera.lookAt(walkCameraTarget);
@@ -502,7 +502,14 @@ function updateReadout(view, descriptor) {
   $('relief').textContent = `${(view.stats.max - view.stats.min).toLocaleString(undefined, { maximumFractionDigits: 1 })} m`;
   $('walk-button').hidden = false;
   document.querySelector('.walk-caption').hidden = false;
-  if (viewMode === 'detail') {
+  if (viewMode.startsWith('region:')) {
+    $('site-name').textContent = descriptor.name;
+    $('site-coords').textContent = `${Math.abs(descriptor.centerLatitude).toFixed(2)}° S · ${Math.abs(descriptor.centerLongitude).toFixed(2)}° ${descriptor.centerLongitude < 0 ? 'W' : 'E'}`;
+    $('site-tag').textContent = 'LOLA DEM';
+    $('view-note').textContent = 'LOLA GLOBAL DEM · ~474 M SOURCE RESOLUTION · 25.6 KM WINDOW';
+    $('walk-button').innerHTML = '<span class="walk-button-mark" aria-hidden="true">↗</span> Drive the surface';
+    document.querySelector('.walk-caption').textContent = 'Interpolated terrain · small hazards are not represented';
+  } else if (viewMode === 'detail') {
     $('site-name').textContent = 'De Gerlache Rim 2';
     $('site-coords').textContent = '88.20° S · 64.40° W';
     $('site-tag').textContent = 'LOCAL TILE';
@@ -578,7 +585,7 @@ async function showView(mode) {
   });
   try {
     if (!viewData || viewData.mode !== mode) {
-      const descriptor = mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
+      const descriptor = mode.startsWith('region:') ? metadata.regions[mode.slice(7)] : mode === 'detail' ? metadata.detail : mode === 'crater' ? metadata.crater : metadata.overview;
       const data = await readGrid(descriptor);
       const fine = mode === 'crater'
         ? { descriptor: metadata.craterDetail, data: await readGrid(metadata.craterDetail) }
@@ -620,6 +627,9 @@ async function showView(mode) {
 }
 
 document.querySelectorAll('.view-button').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
+regionSelect.addEventListener('change', () => {
+  if (regionSelect.value) showView(`region:${regionSelect.value}`);
+});
 $('walk-button').addEventListener('click', async () => {
   if (enteringDrive) return;
   enteringDrive = true;
@@ -629,6 +639,8 @@ $('walk-button').addEventListener('click', async () => {
   try {
     if (!rover) {
       rover = await loadRover();
+      new THREE.Box3().setFromObject(rover).getCenter(roverFocus);
+      rover.worldToLocal(roverFocus);
       rover.traverse(part => {
         if (!part.isMesh) return;
         part.castShadow = true;
@@ -717,4 +729,10 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-showView('overview');
+const initialRegion = new URLSearchParams(location.search).get('region');
+if (Object.hasOwn(metadata.regions, initialRegion)) {
+  regionSelect.value = initialRegion;
+  showView(`region:${initialRegion}`);
+} else {
+  showView('overview');
+}
