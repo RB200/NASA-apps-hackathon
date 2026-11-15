@@ -120,7 +120,7 @@ Write-Host "  Opening the app in your browser..." -ForegroundColor Yellow
 Write-Host ""
 
 try {
-    Start-Process "http://localhost:5173"
+    Start-Process "http://localhost:5173/?welcome=1"
     Write-Success "App opened"
 } catch {
     Write-Host "  Could not auto-open browser - please manually visit:" -ForegroundColor Yellow

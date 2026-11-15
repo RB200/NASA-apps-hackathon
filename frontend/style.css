@@ -124,7 +124,39 @@ button.primary:disabled { opacity: .4; cursor: default; }
 .rover-button { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 12px 0 4px; }
 .rover-button small { font-size: 11px; font-weight: 500; letter-spacing: 0; opacity: .75; }
 
-#credits { position: fixed; left: 16px; right: 16px; bottom: 12px; color: var(--muted); font-size: 11px; pointer-events: none; }
+#atlas-welcome {
+  width: min(540px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: clamp(20px, 6vw, 32px);
+  color: var(--text);
+  background: #171b20;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .45);
+}
+#atlas-welcome::backdrop { background: rgba(5, 7, 13, .7); }
+#atlas-welcome[open]:not(:modal) {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  z-index: 1000;
+  box-shadow: 0 0 0 100vmax rgba(5, 7, 13, .7);
+}
+#atlas-welcome h2 { margin: 0; font-size: clamp(24px, 5vw, 32px); line-height: 1.15; }
+#atlas-welcome .welcome-rover {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: 18px;
+  border-radius: 10px;
+}
+#atlas-welcome p, #atlas-welcome ol { margin: 14px 0; color: #c9d0de; }
+#atlas-welcome ol { padding-left: 22px; }
+#atlas-welcome li + li { margin-top: 8px; }
+#atlas-welcome strong { color: var(--text); }
+#atlas-welcome form { margin-top: 20px; }
 
 @media (max-width: 760px) {
   .panel { top: auto; bottom: 0; left: 0 !important; right: 0 !important; width: auto !important; max-width: none;
@@ -132,7 +164,6 @@ button.primary:disabled { opacity: .4; cursor: default; }
   .right-panels { position: static; --lunar-top: 76px; }
   #out { position: fixed; z-index: 2; }
   .pc { grid-template-columns: 1fr; }
-  #credits { display: none; }
 }
 
 @media (max-width: 350px) {

@@ -76,5 +76,5 @@ echo.
 echo All three servers are starting in separate windows...
 echo Close those windows to stop the servers.
 timeout /t 3 /nobreak >nul
-start "" "http://localhost:5173"
+start "" "http://localhost:5173/?welcome=1"
 pause

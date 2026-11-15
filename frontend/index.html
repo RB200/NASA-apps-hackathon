@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lunar Terrain Analogs</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=welcome-rover" />
 </head>
 <body>
   <div id="globe"></div>
@@ -69,10 +69,30 @@
 
   </div>
 
-  <footer id="credits">
-    South-pole map image: supplied South_Pole.png (source to be credited) · Earth terrain: NASA SRTM (SRTMGL3, SRTMGL30) + ASTER GDEM (ASTGTM) + MODIS land cover (MCD12C1), via NASA Earthdata · Moon terrain: NASA LRO LOLA · Moon sunlight: NASA LRO LOLA average solar illumination (Mazarico et al. 2011, <a href="https://pgda.gsfc.nasa.gov/products/69" target="_blank" rel="noopener">PGDA</a>) · Place names: GeoNames (CC BY 4.0), Natural Earth · Imagery: Esri World Imagery · Region positions approximate, from NASA’s 2024 candidate region map
-  </footer>
+  <dialog id="atlas-welcome" open aria-labelledby="atlas-welcome-title" aria-describedby="atlas-welcome-description">
+    <img class="welcome-rover" src="assets/rover-welcome.png" width="1920" height="1080" alt="A six-wheeled rover on the Moon beneath a star-filled sky." />
+    <h2 id="atlas-welcome-title">Lunar Analog Finder</h2>
+    <p id="atlas-welcome-description">What would it be like to drive across the terrain near a lunar landing site? Explore nine candidate regions near the Moon’s south pole and find places on Earth with similar terrain.</p>
+    <ol>
+      <li><strong>Choose a lunar region.</strong> Select a marked site on the map to see its highest-ranked Earth matches.</li>
+      <li><strong>Explore a match.</strong> Open an Earth site to compare features such as slope and elevation range. Where data is available, you can also compare reachable terrain and shadow coverage.</li>
+      <li><strong>Drive both worlds.</strong> Select <strong>Enter rover</strong> to start on Earth, then switch to the Moon. The live elevation graph compares how the same route rises and falls on each terrain.</li>
+    </ol>
+    <p>For a guided starting point, choose <strong>Try the de Gerlache scenario</strong> on the map.</p>
+    <form method="dialog">
+      <button class="primary" type="submit" autofocus>Explore the map</button>
+    </form>
+  </dialog>
 
+  <script>
+    {
+      const entry = new URLSearchParams(location.search);
+      const welcome = document.getElementById('atlas-welcome');
+      const directLink = Boolean(entry.get('region')) || entry.get('demo') === 'de-gerlache';
+      welcome.removeAttribute('open');
+      if (entry.get('welcome') === '1' || !directLink) welcome.showModal();
+    }
+  </script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script type="module" src="main.js?v=atacama-ranking"></script>
 </body>

@@ -86,7 +86,7 @@ frontend_pid=$!
 "$python" -B -m http.server "$rover_port" --bind 127.0.0.1 &
 rover_pid=$!
 
-url="http://127.0.0.1:$frontend_port/"
+url="http://127.0.0.1:$frontend_port/?welcome=1"
 rover_url="http://127.0.0.1:$rover_port/lunar-rover-simulation/frontend/terrain.html"
 for ((attempt = 0; attempt < 75; attempt++)); do
   if ! kill -0 "$backend_pid" "$frontend_pid" "$rover_pid" 2>/dev/null; then
