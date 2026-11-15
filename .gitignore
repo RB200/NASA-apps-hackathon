@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Space Broncos: large downloads and logs from data_prep
+data_prep/cache/
+data_prep/cache_*.log
